@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shape Shuttle</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        #drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 20px;
+            background-color: #fff;
+            transition: background-color 0.2s;
+        }
+
+        #drop-area.dragover {
+            background-color: #e0e0e0;
+        }
+
+        #info-area {
+            background-color: #282c34;
+            color: #abb2bf;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            min-height: 300px;
+        }
+
+        #info-content {
+            margin: 0;
+        }
+
+        .highlight {
+            color: #e06c75; /* Example highlight color */
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .collapsed > span {
+            display: none;
+        }
+
+        .collapsed > span:first-child,
+        .collapsed > span:last-child {
+            display: inline;
+        }
+
+        .highlightIndent .json_indent {
+        background: linear-gradient(to right, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0))
+            0% 50% / 2px 1px repeat-x;
+        }
+
+        .highlight .json_objectOpen,
+        .highlight .json_objectClose,
+        .highlight .json_objectComma,
+        .highlight .json_objectPaddedColon {
+            color: #f77669; /* Soft Red */
+        }
+
+        .highlight .json_arrayOpen,
+        .highlight .json_arrayClose,
+        .highlight .json_arrayComma {
+            color: #f7b267; /* Soft Orange */
+        }
+
+        .highlight .json_string {
+            color: #7aa6f7; /* Soft Blue */
+        }
+
+        .highlight .json_key {
+            color: #8bc9f7; /* Light Blue */
+        }
+
+        .highlight .json_number {
+            color: #a8d59e; /* Soft Green */
+        }
+
+        .highlight .json_boolean {
+            color: #82aaff; /* Soft Cyan */
+        }
+
+        .highlight .json_null {
+            color: #9fa8c9; /* Soft Gray */
+        }
+
+        .selectable.selectableHot {
+            background-color: rgba(0,128,255,0.125);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Shape Shuttle</h1>
+
+    <div id="drop-area">
+        Drop files here or click to select files
+        <input type="file" id="file-input" multiple accept=".gltf,.glb">
+    </div>
+
+    <div id="info-area">
+        <pre id="info-content" class="highlight"></pre>
+    </div>
+
+    <script src="format.js" defer="defer"></script>
+    <script src="shuttle.js" defer="defer"></script>
+    <script src="dh.js" defer="defer"></script>
+
+</body>
+</html>
