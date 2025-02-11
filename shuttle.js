@@ -1,5 +1,5 @@
 const formatter = new AsyncFormatter();
-const scalarFields = new Set("bufferView,count,byteLength,byteOffset,byteStride,buffer,indices,material,mesh,scene,source,sampler".split(/,/g));
+const scalarFields = new Set("bufferView,count,byteLength,byteOffset,byteStride,buffer,indices,material,mesh,scene,source,sampler,index,metallicFactor".split(/,/g));
 const scalarObjects = new Set("attributes".split(/,/g));
 const enumConstants = (() => {
   const result = new Map([
@@ -13,6 +13,11 @@ const enumConstants = (() => {
   result.set(WebGLRenderingContext.LINES, "LINES");
   return result;
 })();
+
+function isNumber(val) {
+  return typeof val === "number" && !Number.isNaN(val);
+}
+
 const files = [];
 
 function clickSelect(element) {
@@ -57,6 +62,33 @@ function clickSelect(element) {
 
 const primitive = new Set(["padding", "indent"]);
 
+function buildStructure(gltf) {
+  let result = {};
+  result.gltf = gltf;
+  let bufferViews = structuredClone(gltf.bufferViews);
+  bufferViews.forEach(bv => bv.buffer = gltf.buffers[bv.buffer]);
+  let accessors = structuredClone(gltf.accessors);
+  accessors.forEach(acc => acc.bufferView = bufferViews[acc.bufferView]);
+  let meshes = gltf.meshes.map(mesh => {
+    let newMesh = structuredClone(mesh);
+    for (let p of newMesh.primitives) {
+      if (isNumber(p.indices)) p.indices = accessors[p.indices];
+      let va = p.attributes;
+      for (let attr in va) {
+        if (isNumber(va[attr])) va[attr] = accessors[va[attr]];
+      }
+      p.material = gltf.materials[p.material];
+    }
+    return newMesh;
+  });
+  result.allNodes = gltf.nodes.map(node => {
+    let newNode = structuredClone(node);
+    if (isNumber(node.mesh)) newNode.mesh = meshes[node.mesh];
+    return newNode;
+  });
+  return result;
+}
+
 async function handleModelFile(/** File */ file) {
   const view = new DataView(await file.arrayBuffer());
   if (view.getUint32(0, true) !== 0x46546c67) {
@@ -72,10 +104,11 @@ async function handleModelFile(/** File */ file) {
   while (p < length) {
     const chunkSize = view.getUint32(p, true);
     const chunkType = view.getUint32(p + 4, true);
+    console.log(chunkType.toString(16), JSON.stringify(String.fromCodePoint(...new Uint8Array(view.buffer, view.byteOffset + p + 4, 4))));
     if (chunkType === 0x4e4f534a) {
       const jsonBytes = new Uint8Array(view.buffer, view.byteOffset + p + 8, chunkSize);
       const json = td.decode(jsonBytes);
-      files.push(JSON.parse(json));
+      files.push(buildStructure(JSON.parse(json)));
       const s = await formatter.formatJson(json, { width: 120, wantAttributed: true }, { });
       if (s instanceof Array) {
         infoContent.textContent = "";
@@ -127,7 +160,6 @@ async function handleModelFile(/** File */ file) {
           }
         }
       }
-      break;
     }
     p += 8 + chunkSize;
   }
