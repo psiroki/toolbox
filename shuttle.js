@@ -89,7 +89,7 @@ function buildStructure(gltf) {
   return result;
 }
 
-async function handleModelFile(/** File */ file) {
+async function handleModelFile(file) {
   const view = new DataView(await file.arrayBuffer());
   if (view.getUint32(0, true) !== 0x46546c67) {
     return appendInfo(`${file.name} doesn't seem to be a valid glTF file`);
@@ -101,14 +101,17 @@ async function handleModelFile(/** File */ file) {
   const length = view.getUint32(8, true);
   let p = 12;
   let td = new TextDecoder();
+  let gltf;
+  let bufferBytes;
   while (p < length) {
     const chunkSize = view.getUint32(p, true);
     const chunkType = view.getUint32(p + 4, true);
+    const chunkBodyBytes = new Uint8Array(view.buffer, view.byteOffset + p + 8, chunkSize);
     console.log(chunkType.toString(16), JSON.stringify(String.fromCodePoint(...new Uint8Array(view.buffer, view.byteOffset + p + 4, 4))));
     if (chunkType === 0x4e4f534a) {
-      const jsonBytes = new Uint8Array(view.buffer, view.byteOffset + p + 8, chunkSize);
-      const json = td.decode(jsonBytes);
-      files.push(buildStructure(JSON.parse(json)));
+      const json = td.decode(chunkBodyBytes);
+      gltf = JSON.parse(json);
+      files.push(buildStructure(gltf));
       const s = await formatter.formatJson(json, { width: 120, wantAttributed: true }, { });
       if (s instanceof Array) {
         infoContent.textContent = "";
@@ -160,7 +163,26 @@ async function handleModelFile(/** File */ file) {
           }
         }
       }
+    } else if (chunkType === 0x4e4942) {
+      bufferBytes = chunkBodyBytes;
     }
     p += 8 + chunkSize;
   }
+  let first = true;
+  for (let image of gltf.images) {
+    let mime = image.mimeType;
+    if (!mime.startsWith("image/")) continue;
+    let view = gltf.bufferViews[image.bufferView];
+    let bytes = new Uint8Array(bufferBytes.buffer, bufferBytes.byteOffset + view.byteOffset, view.byteLength);
+    let data = `data:${mime};base64,${btoa(Array.from(bytes, (byte) => String.fromCodePoint(byte)).join(""))}`;
+    let img = document.createElement("img");
+    img.src = data;
+    img.title = img.alt = view.name;
+    if (first) {
+      infoContent.append(document.createElement("hr"));
+      first = false;
+    }
+    infoContent.append(img);
+  }
+  
 }
