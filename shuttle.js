@@ -1,10 +1,45 @@
 const formatter = new AsyncFormatter();
 const scalarFields = new Set("bufferView,count,byteLength,byteOffset,byteStride,buffer,indices,material,mesh,scene,source,sampler,index,metallicFactor".split(/,/g));
 const scalarObjects = new Set("attributes".split(/,/g));
+const componentCounts = new Map([
+  ["SCALAR", 1],
+  ["VEC2", 2],
+  ["VEC3", 3],
+  ["VEC4", 4],
+  ["MAT2", 4],
+  ["MAT3", 9],
+  ["MAT4", 16],
+]);
+const dataTypes = (() => {
+  const result = new Map([]);
+  const SIGNED_BYTE = 5120;
+  const SIGNED_SHORT = 5122;
+  const raw = [
+    [SIGNED_BYTE, "Int8", 1],
+    [WebGLRenderingContext.UNSIGNED_BYTE, "Uint8", 1],
+    [SIGNED_SHORT, "Int16", 2],
+    [WebGLRenderingContext.UNSIGNED_SHORT, "Uint16", 2],
+    [WebGLRenderingContext.UNSIGNED_INT, "Uint32", 4],
+    [WebGLRenderingContext.FLOAT, "Float32", 4, WebGLRenderingContext.UNSIGNED_INT],
+  ];
+  for (let e of raw) {
+    let type = e[0];
+    result.set(type, {
+      type,
+      read: DataView.prototype["get"+e[1]],
+      write: DataView.prototype["set"+e[1]],
+      size: e[2],
+      raw: e.length > 3 ? result.get(e[3]) : null,
+    });
+  }
+  return result;
+})();
 const enumConstants = (() => {
   const result = new Map([
     ["POINTS", WebGLRenderingContext.POINTS],
-    ["LINES", WebGLRenderingContext.LINES]
+    ["LINES", WebGLRenderingContext.LINES],
+    ["SIGNED_BYTE", 5120],
+    ["SIGNED_SHORT", 5122],
   ]);
   for (let entry of Object.entries(WebGLRenderingContext)) {
     result.set(entry[1], entry[0]);
@@ -19,6 +54,41 @@ function isNumber(val) {
 }
 
 const files = [];
+
+function niceFloat(f) {
+  return Math.abs(f) < 1e-40 ? 0 : f;
+}
+
+class VectorAdapter {
+  constructor(accessor, attr) {
+    this.componentType = accessor.componentType;
+    this.rawCopy = this.componentType === WebGLRenderingContext.FLOAT;
+    this.dataType = dataTypes.get(this.componentType);
+    this.type = accessor.type;
+    this.componentCount = componentCounts.get(this.type);
+    this.size = this.dataType.size * this.componentCount;
+    this.dims = this.componentCount <= 2 ? 2 : 3;
+    this.targetSize = 4 * this.dims;
+    if (this.componentCount < 2) throw "Unexpected scalar";
+    this.accessor = accessor;
+    this.attr = attr;
+  }
+
+  convert(srcView, srcOffset, dstView, dstOffset) {
+    if (this.rawCopy) {
+      for (let i = 0; i < this.dims; ++i) {
+        let val = srcView.getInt32(srcOffset, true);
+        dstView.setInt32(dstOffset, val, true);
+        srcOffset += 4;
+        dstOffset += 4;
+      }
+    } else {
+      // It's unlikely this will ever be needed
+      throw "Unimplemented: non-float vector types";
+    }
+    return [this.size, this.targetSize];
+  }
+};
 
 function clickSelect(element) {
   let lastDown = 0;
@@ -103,6 +173,7 @@ async function handleModelFile(file) {
   let td = new TextDecoder();
   let gltf;
   let bufferBytes;
+  let thisFile;
   while (p < length) {
     const chunkSize = view.getUint32(p, true);
     const chunkType = view.getUint32(p + 4, true);
@@ -111,7 +182,7 @@ async function handleModelFile(file) {
     if (chunkType === 0x4e4f534a) {
       const json = td.decode(chunkBodyBytes);
       gltf = JSON.parse(json);
-      files.push(buildStructure(gltf));
+      files.push(thisFile = buildStructure(gltf));
       const s = await formatter.formatJson(json, { width: 120, wantAttributed: true }, { });
       if (s instanceof Array) {
         infoContent.textContent = "";
@@ -184,5 +255,45 @@ async function handleModelFile(file) {
     }
     infoContent.append(img);
   }
-  
+
+  let inView = new DataView(bufferBytes.buffer, bufferBytes.byteOffset, bufferBytes.byteLength);
+  const attrs = "POSITION,NORMAL,TEXCOORD_0".split(/,/g);
+  for (let mesh of gltf.meshes) {
+    if (mesh.primitives.length !== 1) throw "Unimplemented: more than 1 primitive per mesh";
+    const p = mesh.primitives[0];
+    const adapters = attrs.map(a => new VectorAdapter(gltf.accessors[p.attributes[a]], a));
+    let count = -1;
+    let stride = 0;
+    for (let adapter of adapters) {
+      if (count !== -1 && count !== adapter.accessor.count) {
+        throw "Unexpected: count for "+adapter.attr+" is "+adapter.accessor.count+" and not "+count;
+      }
+      count = adapter.accessor.count;
+      stride += adapter.targetSize;
+    }
+    const vertexBuffer = new ArrayBuffer(stride * count);
+    const vbv = new DataView(vertexBuffer);
+    let vbOffset = 0;
+    for (let adapter of adapters) {
+      let bufferView = gltf.bufferViews[adapter.accessor.bufferView];
+      if (bufferView.buffer) throw "Unexpected nonzero buffer index";
+      let inPos = bufferView.byteOffset;
+      let vbPos = vbOffset;
+      for (let i = 0; i < count; ++i) {
+        const [sourceStep, targetStep] = adapter.convert(inView, inPos, vbv, vbPos);
+        inPos += sourceStep;
+        // we're interleaving the data, stride takes targetStep into account
+        vbPos += stride;
+      }
+      vbOffset += adapter.targetSize;
+    }
+    if (count <= 25) {
+      let vertices = [];
+      for (let i = 0; i < count; ++i) {
+        vertices.push(Array.from({length: stride>>2})
+            .map((_, j) => niceFloat(vbv.getFloat32(i*stride + (j<<2), true))));
+      }
+      thisFile.vertices = vertices;
+    }
+  }
 }
