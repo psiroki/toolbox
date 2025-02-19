@@ -315,11 +315,12 @@ async function handleModelFile(file) {
     const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
     modelBlob.arrayBuffer().then(combined => {
       const crc = crc32hex(new Uint8Array(combined));
+      const rawName = (file?.name || "").replace(/\.[^\.]+$/, "") || "model";
       const buttonBar = document.createElement("div");
       const saveLink = document.createElement("a");
       saveLink.textContent = "Save";
       saveLink.href = URL.createObjectURL(modelBlob);
-      saveLink.download = "model_"+crc+".mdz";
+      saveLink.download = rawName+"_"+crc+".mdz";
       buttonBar.append(saveLink);
       infoContent.append(buttonBar);
     });
