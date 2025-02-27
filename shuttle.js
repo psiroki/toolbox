@@ -243,7 +243,7 @@ async function handleModelFile(file) {
     p += 8 + chunkSize;
   }
   let imageContainer;
-  for (let image of gltf.images) {
+  for (let image of gltf.images ?? []) {
     let mime = image.mimeType;
     if (!mime.startsWith("image/")) continue;
     let view = gltf.bufferViews[image.bufferView];
