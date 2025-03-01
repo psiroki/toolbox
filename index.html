@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toolbox - Browser-based tools for experimentation</title>
+    <meta name="description" content="A collection of browser-based tools for personal experimentation and prototyping">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <style>
+        :root {
+            --bg-color: #0a1929;
+            --card-bg: #132f4c;
+            --text-color: #e3f2fd;
+            --accent-color: #5090d3;
+            --hover-color: #71b2f0;
+            --card-shadow: 0 4px 20px rgba(0, 10, 20, 0.35);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--accent-color);
+        }
+
+        .subtitle {
+            opacity: 0.8;
+            font-size: 1.1rem;
+        }
+
+        .tools-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            justify-content: center;
+            margin: 2rem 0;
+        }
+
+        .tool-card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--card-shadow);
+            padding: 2rem;
+            flex: 1 1 350px;
+            max-width: 400px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+
+        .tool-card:hover {
+            /* transform: translateY(-5px); */
+            box-shadow: 0 6px 25px rgba(0, 10, 20, 0.45);
+        }
+
+        /* Create a flex container for the icon and title */
+        .tool-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        /* Style the icon */
+        .tool-icon {
+            display: block;
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            margin-right: 1rem; /* Add spacing between icon and title */
+        }
+
+        .tool-title {
+            margin-bottom: 0;
+            font-size: 1.5rem;
+            margin-bottom: 0.75rem;
+            color: var(--accent-color);
+        }
+
+        .tool-title a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .tool-title a:hover {
+            color: var(--hover-color);
+        }
+
+        .tool-description {
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            opacity: 0.9;
+            flex-grow: 1;
+        }
+
+        .tool-link {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            text-decoration: none;
+            padding: 0.5rem 1.25rem;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+        }
+
+        .tool-link:hover {
+            background-color: var(--hover-color);
+        }
+
+        footer {
+            margin-top: 3rem;
+            opacity: 0.7;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        footer a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .tools-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .tool-card {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Toolbox</h1>
+            <div class="subtitle">A collection of browser-based tools for experimentation and prototyping</div>
+        </header>
+
+        <div class="tools-container">
+            <div class="tool-card">
+                <div class="tool-header">
+                    <img src="VisuLab/icon.jpeg" alt="VisuLab Icon" class="tool-icon">
+                    <h2 class="tool-title"><a href="VisuLab/">VisuLab</a></h2>
+                </div>
+                <p class="tool-description">
+                    A console-driven image manipulation playground. Drop or paste images and manipulate them via JavaScript.
+                    Perfect for quick image editing experiments.
+                </p>
+                <div><a href="VisuLab/" class="tool-link">Open VisuLab</a></div>
+            </div>
+
+            <div class="tool-card">
+                <div class="tool-header">
+                    <img src="ShapeShuttle/icon.jpeg" alt="ShapeShuttle Icon" class="tool-icon">
+                    <h2 class="tool-title"><a href="ShapeShuttle/">ShapeShuttle</a></h2>
+                </div>
+                <p class="tool-description">
+                    A glTF (.glb) file loader and extractor. View and extract images and meshes from 3D models in your browser.
+                </p>
+                <div><a href="ShapeShuttle/" class="tool-link">Open ShapeShuttle</a></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Personal tools created by <a href="https://github.com/psiroki">psiroki</a> • <a href="https://github.com/psiroki/toolbox">GitHub Repository</a></p>
+        </footer>
+    </div>
+</body>
+</html>

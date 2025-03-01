@@ -3,40 +3,78 @@
 <head>
     <title>VisuLab: Console-Driven Image Manipulation</title>
     <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to bottom, #1a1a1a, #2d2d2d); /* Dark gradient night sky */
+            color: #e0e0e0; /* Light gray text for readability */
+            font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif; /* Sleek font */
+            height: 100%; /* Ensure full-page coverage */
+        }
+
         .canvas-container {
             position: relative;
             display: inline-block;
-            margin: 10px;
+            margin: 15px; /* Slightly more spacing for breathing room */
+            border: 1px solid #444; /* Subtle dark border for definition */
+            border-radius: 4px; /* Soft corners for sleekness */
+            background: #252525; /* Darker canvas backdrop */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
         }
+
         .close-btn {
             position: absolute;
-            top: 0;
-            right: 0;
-            background: red;
-            color: white;
+            top: 4px; /* Slight offset from edge */
+            right: 4px;
+            background: #ff4444; /* Vibrant red for visibility */
+            color: #fff;
             border: none;
+            border-radius: 2px; /* Minimal rounding */
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 2px 8px; /* Wider for sleek clickability */
+            font-size: 14px;
+            transition: background 0.2s ease; /* Smooth hover effect */
         }
+
+        .close-btn:hover {
+            background: #cc3333; /* Darker red on hover */
+        }
+
         #dropZone {
-            border: 2px dashed #ccc;
-            padding: 20px;
+            border: 2px dashed #666; /* Lighter gray dashed border for contrast */
+            padding: 25px; /* More padding for a spacious feel */
             text-align: center;
-            margin: 20px;
+            margin: 25px auto; /* Centered with more margin */
+            background: #333; /* Darker drop zone */
+            color: #bbb; /* Softer gray text */
+            border-radius: 6px; /* Sleek rounding */
+            max-width: 600px; /* Constrain width for elegance */
+            transition: border-color 0.3s ease; /* Smooth drag-over effect */
+        }
+
+        #dropZone:hover, #dropZone.dragover { /* Optional: Add class via JS for dragover */
+            border-color: #888; /* Brighter border on interaction */
+            color: #ddd; /* Lighter text on hover */
         }
     </style>
-    <meta name="description" content="VisuLab: Console-Driven Image Manipulation - Drop or paste images and manipulate them via the browser console.">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <meta name="description" content="VisuLab: Console-Driven Image Manipulation - A browser tool for programmatic image editing with canvas and pixel data.">
     <meta property="og:title" content="VisuLab: Console-Driven Image Manipulation">
-    <meta property="og:description" content="A playground for programmatic image manipulation. Drop or paste images, then use the console to experiment with canvas-based edits.">
+    <meta property="og:description" content="A playground for manipulating images via the browser console, featuring canvas rendering and custom pixel tools.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://psiroki.github.io/toolbox/visulab/"> <!-- Replace with your URL -->
-    <meta property="og:image" content="https://psiroki.github.io/toolbox/visulab/preview.png"> <!-- Replace with an optional preview image URL -->
-    <meta name="twitter:card" content="summary">
+    <meta property="og:url" content="https://psiroki.github.io/toolbox/VisuLab/">
+    <meta property="og:image" content="https://psiroki.github.io/toolbox/VisuLab/preview.jpeg">
+    <meta property="og:image:width" content="1024">
+    <meta property="og:image:height" content="1024">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="VisuLab: Console-Driven Image Manipulation">
-    <meta name="twitter:description" content="Drop or paste images and manipulate them programmatically in the browser console.">
-</head>
+    <meta name="twitter:description" content="Edit images programmatically in the browser with VisuLab’s canvas and console interface.">
+    <meta name="twitter:image" content="https://psiroki.github.io/toolbox/VisuLab/preview.jpeg"></head>
+    <meta name="twitter:image:width" content="1024">
+    <meta name="twitter:image:height" content="1024">
 <body>
-    <div id="dropZone">Drop images here or paste them</div>
+    <div id="dropZone">Drop images here, paste them, or click to select files</div>
+    <input type="file" multiple="multiple" id="fileInput" accept="image/*" style="display: none;">
     <div id="canvasContainer"></div>
 
     <script>
@@ -48,17 +86,43 @@
         const canvasContainer = document.getElementById('canvasContainer');
 
         // Handle drop events
-        dropZone.addEventListener('dragover', (e) => e.preventDefault());
-        dropZone.addEventListener('drop', handleDrop);
-        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleDrop(e);
+        });
+
         // Handle paste events
         document.addEventListener('paste', handlePaste);
+
+        const fileInput = document.getElementById('fileInput');
+
+        // Trigger file input on drop zone click
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle file selection
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            for (const file of files)
+                processImageFile(file);
+            // Reset input so the same files can be selected again
+            fileInput.value = '';
+        });
 
         function handleDrop(e) {
             e.preventDefault();
             const files = e.dataTransfer.files;
-            if (files.length > 0 && files[0].type.startsWith('image/')) {
-                processImageFile(files[0]);
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    processImageFile(file);
+                }
             }
         }
 
@@ -68,7 +132,6 @@
                 if (items[i].type.startsWith('image/')) {
                     const blob = items[i].getAsFile();
                     processImageFile(blob);
-                    break;
                 }
             }
         }
