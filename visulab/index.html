@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VisuLab: Console-Driven Image Manipulation</title>
+    <style>
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            margin: 10px;
+        }
+        .close-btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: red;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        #dropZone {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
+    <meta name="description" content="VisuLab: Console-Driven Image Manipulation - Drop or paste images and manipulate them via the browser console.">
+    <meta property="og:title" content="VisuLab: Console-Driven Image Manipulation">
+    <meta property="og:description" content="A playground for programmatic image manipulation. Drop or paste images, then use the console to experiment with canvas-based edits.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://psiroki.github.io/toolbox/visulab/"> <!-- Replace with your URL -->
+    <meta property="og:image" content="https://psiroki.github.io/toolbox/visulab/preview.png"> <!-- Replace with an optional preview image URL -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="VisuLab: Console-Driven Image Manipulation">
+    <meta name="twitter:description" content="Drop or paste images and manipulate them programmatically in the browser console.">
+</head>
+<body>
+    <div id="dropZone">Drop images here or paste them</div>
+    <div id="canvasContainer"></div>
+
+    <script>
+        // Global images array
+        const images = [];
+
+        // Get DOM elements
+        const dropZone = document.getElementById('dropZone');
+        const canvasContainer = document.getElementById('canvasContainer');
+
+        // Handle drop events
+        dropZone.addEventListener('dragover', (e) => e.preventDefault());
+        dropZone.addEventListener('drop', handleDrop);
+        
+        // Handle paste events
+        document.addEventListener('paste', handlePaste);
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                processImageFile(files[0]);
+            }
+        }
+
+        function handlePaste(e) {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                    const blob = items[i].getAsFile();
+                    processImageFile(blob);
+                    break;
+                }
+            }
+        }
+
+        function processImageFile(file) {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            
+            img.onload = () => {
+                const canvas = createCanvas(img.width, img.height);
+                const context = canvas.getContext('2d');
+                context.drawImage(img, 0, 0);
+                addToImagesArray(canvas, context);
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+
+        function createCanvas(width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            return canvas;
+        }
+
+        function addToImagesArray(canvas, context) {
+            // Create container div
+            const container = document.createElement('div');
+            container.className = 'canvas-container';
+            
+            // Create close button
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'X';
+            closeBtn.className = 'close-btn';
+            closeBtn.onclick = () => removeCanvas(canvas);
+            
+            // Add canvas and button to container
+            container.appendChild(canvas);
+            container.appendChild(closeBtn);
+            
+            // Add container to DOM
+            canvasContainer.appendChild(container);
+            
+            // Add to images array
+            images.push({ canvas, context });
+        }
+
+        function removeCanvas(canvas) {
+            // Find and remove from images array
+            const index = images.findIndex(item => item.canvas === canvas);
+            if (index >= 0) {
+                images.splice(index, 1);
+            }
+            
+            // Remove from DOM
+            const container = canvas.parentElement;
+            if (container) {
+                container.remove();
+            }
+        }
+
+        function fromData(width, height, pixels) {
+            const canvas = createCanvas(width, height);
+            const context = canvas.getContext('2d');
+            const pixelView = pixels instanceof Uint8ClampedArray
+                    ? pixels
+                    : new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+            const imageData = new ImageData(pixelView, width, height);
+            context.putImageData(imageData, 0, 0);
+            addToImagesArray(canvas, context);
+        }
+
+        // Global LabTools registry
+        const labTools = {};
+
+        // Register a LabTool
+        function registerLabTool(name, description, fn) {
+            labTools[name] = {
+                name,
+                description,
+                fn
+            };
+        }
+
+        // Tools listing function
+        function tools(name = null) {
+            if (name && labTools[name]) {
+                const tool = labTools[name];
+                console.log(`%c${tool.name}:`, 'font-weight: bold');
+                console.log(tool.description);
+            } else if (!name) {
+                console.log('%cAvailable LabTools:', 'font-size: 14px; font-weight: bold;');
+                for (const toolName in labTools) tools(toolName);
+            } else {
+                console.error(`LabTool '${name}' not found.`);
+            }
+        }
+
+        // Print usage instructions to console
+        console.log(
+            '%cWelcome to VisuLab: Console-Driven Image Manipulation!',
+            'font-size: 16px; font-weight: bold;'
+        );
+        console.log(
+            '%c1. Drop an image file or paste it (Ctrl+V) to create a canvas.\n' +
+            '2. Access canvases via `images` array (e.g., `images[0].context`).\n' +
+            '3. Manipulate programmatically (e.g., `images[0].context.fillRect(10, 10, 50, 50)`).\n' +
+            '4. Use `fromData(width, height, pixels)` for custom pixel data.\n' +
+            '5. List tools with `tools()` or `tools("cubeFill")` for details.\n' +
+            '6. Register new LabTools with `registerLabTool(name, description, fn)`.\n' +
+            '7. Click "X" to remove a canvas.',
+            'font-size: 12px'
+        );
+    </script>
+    <script src="cubefill.js" defer="defer"></script>
+</body>
+</html>
