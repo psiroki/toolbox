@@ -162,6 +162,17 @@ function buildStructure(gltf) {
   return result;
 }
 
+function pathIs(path, str) {
+  let parts = str.split(/\./g);
+  if (path.length !== parts.length) return false;
+  return parts.every((e, i) => {
+    const m = e.split(/:/g);
+    const p = path[i];
+    if (p.name !== m[0]) return false;
+    return m.length === 1 || p.type === m[1];
+  });
+}
+
 async function handleModelFile(file) {
   const view = new DataView(await file.arrayBuffer());
   if (view.getUint32(0, true) !== 0x46546c67) {
@@ -177,6 +188,9 @@ async function handleModelFile(file) {
   let gltf;
   let bufferBytes;
   let thisFile;
+  const meshNodes = [];
+  const path = [];
+  let lastPathKey = null;
   while (p < length) {
     const chunkSize = view.getUint32(p, true);
     const chunkType = view.getUint32(p + 4, true);
@@ -196,19 +210,32 @@ async function handleModelFile(file) {
           const str = new AttributedString(serialized);
           const attr = str.getAttribute().toString();
           if (/Open$/.test(attr)) {
+            path.push({
+              name: lastPathKey ?? "",
+              type: attr.replace(/Open$/, ""),
+            });
+            if (attr === "arrayOpen") {
+              lastPathKey = 0;
+            }
             const newParent = document.createElement("span");
             newParent.classList.add("selectable", "collapsible");
             parent.appendChild(newParent);
             parent = newParent;
             clickSelect(parent);
             opens.push({ type: attr, name: lastKey });
+            newParent.setAttribute("data-path", path.map(e => e.name+":"+e.type).join("."));
+            if (pathIs(path.slice(0, -1), ".meshes:array"))
+              meshNodes.push(newParent);
           }
           if (attr === "key") {
             try {
-              lastKey = JSON.parse(str.toString());
+              lastPathKey = lastKey = JSON.parse(str.toString());
             } catch (e) {
               lastKey = null;
             }
+          }
+          if (attr === "arrayComma") {
+            ++lastPathKey;
           }
           const span = document.createElement("span");
           let text = str.toString();
@@ -234,6 +261,7 @@ async function handleModelFile(file) {
           if (/Close$/.test(attr)) {
             parent = parent.parentNode;
             opens.pop();
+            path.pop();
           }
         }
       }
@@ -261,7 +289,8 @@ async function handleModelFile(file) {
 
   let inView = new DataView(bufferBytes.buffer, bufferBytes.byteOffset, bufferBytes.byteLength);
   const attrs = "POSITION,NORMAL,TEXCOORD_0".split(/,/g);
-  for (let mesh of gltf.meshes) {
+  for (let meshIndex = 0; meshIndex < gltf.meshes.length; ++meshIndex) {
+    const mesh = gltf.meshes[meshIndex];
     if (mesh.primitives.length !== 1) throw "Unimplemented: more than 1 primitive per mesh";
     const p = mesh.primitives[0];
     const adapters = attrs.map(a => new VectorAdapter(gltf.accessors[p.attributes[a]], a));
@@ -318,10 +347,13 @@ async function handleModelFile(file) {
       const rawName = (file?.name || "").replace(/\.[^\.]+$/, "") || "model";
       const buttonBar = document.createElement("div");
       const saveLink = document.createElement("a");
-      saveLink.textContent = "Save";
+      const name = mesh.name;
+      saveLink.textContent = name ? "Save "+name : "Save";
       saveLink.href = URL.createObjectURL(modelBlob);
       saveLink.download = rawName+"_"+crc+".mdz";
+      saveLink.classList.add("saveLink");
       buttonBar.append(saveLink);
+      meshNodes[meshIndex]?.querySelector(".json_objectOpen")?.after(saveLink.cloneNode(true));
       infoContent.append(buttonBar);
     });
 
