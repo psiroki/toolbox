@@ -147,6 +147,6 @@ function cubeFill(image) {
 
 registerLabTool(
   "cubeFill",
-  "Transforms a horizontal sword cube texture (1-3-1-1 face column layout) by filling gaps with rotated versions of adjacent faces. Ideal for skybox textures, ensuring seamless blending during mipmapping or asset creation by using relevant pixel data.",
+  "Transforms a cube texture with a \"Finland flag\" layout (1-3-1-1 face columns from left to right) by filling gaps with rotated versions of adjacent faces. Ideal for skybox textures, ensuring seamless blending during mipmapping or asset creation by using relevant pixel data.",
   cubeFill
 );
