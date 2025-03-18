@@ -91,6 +91,15 @@ class VectorAdapter {
     }
     return [this.sourceSize, this.targetSize];
   }
+
+  readDestination(dstView, dstOffset) {
+    let values = [];
+    for (let i = 0; i < this.targetDims; ++i) {
+      values.push(this.targetType.read.call(dstView, dstOffset, true));
+      dstOffset += this.targetType.size;
+    }
+    return values;
+}
 };
 
 function clickSelect(element) {
@@ -329,8 +338,11 @@ async function handleModelFile(file) {
     let srcIndexPos = indexBufferView.byteOffset;
     let dstIndexPos = 0;
 
+    const rawIndex = new Array(indexCount);
+
     for (let i = 0; i < indexCount; ++i) {
       const [srcStep, dstStep] = indexAdapter.convert(inView, srcIndexPos, ibv, dstIndexPos);
+      rawIndex[i] = indexAdapter.readDestination(ibv, dstIndexPos);
       srcIndexPos += srcStep;
       dstIndexPos += dstStep;
     }
