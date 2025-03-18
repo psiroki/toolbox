@@ -68,6 +68,8 @@ class Polygon {
         front.push(vert);
         frontValid = true;
       }
+      lastDist = dist;
+      lastVert = vert;
     }
     let f = frontValid && front.length >= 3 ? new Polygon(front, this.normal) : null;
     let b = backValid && back.length >= 3 ? new Polygon(back, this.normal) : null;
