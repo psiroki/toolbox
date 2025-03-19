@@ -1,3 +1,4 @@
+(s=>{s.src="portals.js";document.body.append(s);})(document.createElement("script"));
 const formatter = new AsyncFormatter();
 const scalarFields = new Set("bufferView,count,byteLength,byteOffset,byteStride,buffer,indices,material,mesh,scene,source,sampler,index,metallicFactor".split(/,/g));
 const scalarObjects = new Set("attributes".split(/,/g));
@@ -342,10 +343,19 @@ async function handleModelFile(file) {
 
     for (let i = 0; i < indexCount; ++i) {
       const [srcStep, dstStep] = indexAdapter.convert(inView, srcIndexPos, ibv, dstIndexPos);
-      rawIndex[i] = indexAdapter.readDestination(ibv, dstIndexPos);
+      rawIndex[i] = indexAdapter.readDestination(ibv, dstIndexPos).at(0);
       srcIndexPos += srcStep;
       dstIndexPos += dstStep;
     }
+
+    const rawVertex = new Array(vertexCount);
+    vbPos = 0;
+    for (let i = 0; i < vertexCount; ++i) {
+      rawVertex[i] = adapters[0].readDestination(vbv, vbPos);
+      vbPos += stride;
+    }
+
+    console.log(buildBSP(rawVertex, rawIndex));
 
     const headerBuffer = new ArrayBuffer(3 * 4);
     new Uint8Array(headerBuffer).set(Array.from("MDZ0").map(s => s.charCodeAt(0)), 0);
