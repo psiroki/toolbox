@@ -1,7 +1,15 @@
 const ON_EPSILON = 0.01;
 
+function vorigin() {
+  return [0, 0, 0];
+}
+
 function vadd(a, b) {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function vmad(a, b, f) {
+  return [a[0] + f*b[0], a[1] + f*b[1], a[2] + f*b[2]];
 }
 
 function vsub(a, b) {
@@ -20,7 +28,11 @@ function crossProduct(a, b) {
   ];
 }
 
-function lengthSquared(a) {
+function vlen(a) {
+  return Math.sqrt(vlenSq(a));
+}
+
+function vlenSq(a) {
   return a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
 }
 
@@ -28,19 +40,63 @@ function vscale(a, s) {
   return [a[0] * s, a[1] * s, a[2] * s];
 }
 
-function normalize(v) {
-  const s = 1/Math.sqrt(lengthSquared(v));
+function vnormalize(v) {
+  const s = 1/Math.sqrt(vlenSq(v));
   return Number.isFinite(s) ? vscale(v, s) : v;
+}
+
+function vminDim(v) {
+  let a = Math.abs(v[0]);
+  let idx = 0;
+  if (Math.abs(v[1]) < a) {
+    a = Math.abs(v[1]);
+    idx = 1;
+  }
+  if (Math.abs(v[2]) < a) {
+    a = Math.abs(v[2]);
+    idx = 2;
+  }
+  return idx;
 }
 
 function signedDistance(plane, point) {
   return dotProduct(plane, point) - plane[3];
 }
 
+function vmin(vectors) {
+  if (vectors.length <= 1) return vectors[0];
+  let m = Array.from(vectors[0]);
+  for (let v of vectors) {
+    for (let i = 0; i < 3; ++i) {
+      if (v[i] < m[i]) m[i] = v[i];
+    }
+  }
+  return m;
+}
+
+function vmax(vectors) {
+  if (vectors.length <= 1) return vectors[0];
+  let m = Array.from(vectors[0]);
+  for (let v of vectors) {
+    for (let i = 0; i < 3; ++i) {
+      if (v[i] > m[i]) m[i] = v[i];
+    }
+  }
+  return m;
+}
+
+function replaceSame(val, ifSame, valueThen) {
+  return val === ifSame ? valueThen : val;
+}
+
 class Polygon {
+  verts;
+  normal;
+  plane;
+
   constructor(verts, normal=null) {
     this.verts = Array.from(verts);
-    this.normal = normal ?? normalize(crossProduct(vsub(verts[1], verts[0]), vsub(verts[2], verts[0])));
+    this.normal = normal ?? vnormalize(crossProduct(vsub(verts[1], verts[0]), vsub(verts[2], verts[0])));
     this.plane = [...this.normal, dotProduct(this.normal, verts[0])];
   }
 
@@ -56,13 +112,14 @@ class Polygon {
       if (dist < -ON_EPSILON && lastDist > ON_EPSILON ||
         dist > ON_EPSILON && lastDist < -ON_EPSILON) {
         const t = dist / (dist - lastDist);
-        const c = vadd(vert, vscale(vsub(lastVert, vert), t));
+        const c = vmad(vert, vsub(lastVert, vert), t);
         front.push(c);
         back.push(c);
       } else if (dist <= ON_EPSILON && dist >= -ON_EPSILON) {
         front.push(vert);
         back.push(vert);
-      } else if (dist < -ON_EPSILON) {
+      }
+      if (dist < -ON_EPSILON) {
         back.push(vert);
         backValid = true;
       } else if (dist > ON_EPSILON) {
@@ -78,26 +135,177 @@ class Polygon {
   }
 }
 
+class Portal {
+  poly;
+  front;
+  back;
+
+  constructor(poly, front, back) {
+    this.poly = poly;
+    this.front = front;
+    this.back = back;
+  }
+
+  slice(node) {
+    const plane = node.plane;
+    const frontNode = node.front;
+    const backNode = node.back;
+    const [fp, bp] = this.poly.slice(plane);
+    if (fp === null && bp === null) {
+      // coplanar, this is bad, I think
+      throw "Coplanar portal found";
+    }
+    if (fp === null) {
+      // it's in the back
+      if (this.front === node) this.#changeFront(backNode);
+      if (this.back === node) this.#changeBack(backNode);
+      return [null, this];
+    }
+    if (bp === null) {
+      // it's in the front
+      if (this.front === node) this.#changeFront(frontNode);
+      if (this.back === node) this.#changeBack(frontNode);
+      return [this, null];
+    }
+    const frontPortal = new Portal(fp, replaceSame(this.front, node, frontNode), replaceSame(this.back, node, frontNode));
+    const backPortal = new Portal(bp, replaceSame(this.front, node, backNode), replaceSame(this.back, node, backNode));
+    this.#removeFromNodes();
+    frontPortal.#addToNodes();
+    backPortal.#addToNodes();
+    return [frontPortal, backPortal];
+  }
+
+  #changeFront(newFront) {
+    if (this.front) this.front.portals.delete(this);
+    this.front = newFront;
+    this.front.portals.add(this);
+  }
+
+  #changeBack(newBack) {
+    if (this.back) this.back.portals.delete(this);
+    this.back = newBack;
+    this.back.portals.add(this);
+  }
+
+  #removeFromNodes() {
+    if (this.front) this.front.portals.delete(this);
+    if (this.back) this.back.portals.delete(this);
+  }
+
+  #addToNodes() {
+    if (this.front) this.front.portals.add(this);
+    if (this.back) this.back.portals.add(this);
+  }
+}
+
 class BSPNode {
   plane = null;
   polys = [];
   front = null;
   back = null;
+  parent = null;
   #portals = null;
+  solid = false;
+  mins = null;
+  maxs = null;
 
-  constructor() {
+  constructor(parent = null) {
+    this.parent = parent;
   }
 
   get portals() {
-    return Array.from(this.#portals ?? []);
+    return this.#portals ??= new Set();
   }
 
   set portals(val) {
-    this.#portals = Array.from(val);
+    this.#portals = new Set(val);
   }
 
   get isLeaf() {
     return this.plane === null;
+  }
+
+  createPlanePolygon() {
+    let center = vscale(vadd(this.maxs, this.mins), 0.5);
+    const size = vlen(vsub(this.maxs, this.mins)) * 2.0;
+    let helper = vorigin();
+    helper[vminDim(this.plane)] = 1;
+    let up = vnormalize(crossProduct(this.plane, helper));
+    let side = vnormalize(crossProduct(up, this.plane));
+    const centerDrop = signedDistance(this.plane, center);
+    center = vmad(center, this.plane, -centerDrop);
+    up = vscale(up, size);
+    side = vscale(side, size);
+    const points = [
+      vmad(vmad(center, up,  1), side, -1),
+      vmad(vmad(center, up, -1), side, -1),
+      vmad(vmad(center, up, -1), side,  1),
+      vmad(vmad(center, up,  1), side,  1),
+    ];
+    return new Polygon(points);
+  }
+
+  createScaledBoundingBox(s) {
+    // Calculate center point
+    let center = vscale(vadd(this.maxs, this.mins), 0.5);
+    
+    // Calculate half-size of original box
+    let halfSize = vscale(vsub(this.maxs, this.mins), 0.5);
+    
+    // Scale the half-size
+    let scaledHalfSize = vscale(halfSize, s);
+    
+    // Calculate new min and max points from center and scaled half-size
+    let scaledMins = vsub(center, scaledHalfSize);
+    let scaledMaxs = vadd(center, scaledHalfSize);
+    
+    // Create the 6 faces of the box as Polygons
+    let polygons = [
+        // Front face (z max)
+        [
+            [scaledMins[0], scaledMins[1], scaledMaxs[2]],
+            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]]
+        ],
+        // Back face (z min)
+        [
+            [scaledMins[0], scaledMins[1], scaledMins[2]],
+            [scaledMins[0], scaledMaxs[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMins[1], scaledMins[2]]
+        ],
+        // Top face (y max)
+        [
+            [scaledMins[0], scaledMaxs[1], scaledMins[2]],
+            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]]
+        ],
+        // Bottom face (y min)
+        [
+            [scaledMins[0], scaledMins[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMins[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
+            [scaledMins[0], scaledMins[1], scaledMaxs[2]]
+        ],
+        // Right face (x max)
+        [
+            [scaledMaxs[0], scaledMins[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
+            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]]
+        ],
+        // Left face (x min)
+        [
+            [scaledMins[0], scaledMins[1], scaledMins[2]],
+            [scaledMins[0], scaledMins[1], scaledMaxs[2]],
+            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
+            [scaledMins[0], scaledMaxs[1], scaledMins[2]]
+        ],
+    ].map(points => new Polygon(points));
+    
+    return polygons;
   }
 }
 
@@ -121,9 +329,19 @@ function choosePolygon(polys) {
   return sel;
 }
 
-function buildNode(polys) {
-  let node = new BSPNode();
+function buildNode(polys, node = null) {
+  node ??= new BSPNode(null);
   if (polys.length) {
+    let mins = polys.reduce((prev, current) => {
+      const polyMin = vmin(current.verts);
+      return prev ? vmin([prev, polyMin]) : polyMin;
+    }, null);
+    let maxs = polys.reduce((prev, current) => {
+      const polyMin = vmax(current.verts);
+      return prev ? vmax([prev, polyMin]) : polyMin;
+    }, null);
+    node.mins = mins;
+    node.maxs = maxs;
     const sp = choosePolygon(polys);
     const plane = sp.plane;
     node.plane = plane;
@@ -139,10 +357,70 @@ function buildNode(polys) {
       if (front) fronts.push(poly);
       if (back) backs.push(poly);
     }
-    node.front = fronts.length ? buildNode(fronts) : new BSPNode();
-    node.back = backs.length ? buildNode(backs) : new BSPNode();
+    const frontNode = new BSPNode(node);
+    const backNode = new BSPNode(node);
+    backNode.solid = true;
+    node.front = fronts.length ? buildNode(fronts, frontNode) : frontNode;
+    node.back = backs.length ? buildNode(backs, backNode) : backNode;
   }
   return node;
+}
+
+class PortalBuilder {
+  outerPlanes;
+  outerPortals;
+  root;
+
+  constructor(root) {
+    this.root = root;
+    // turn it inside out, I need the polygons to point inwards
+    const bb = root.createScaledBoundingBox(-1.1);
+    // all have node in the front and nothing in the back
+    this.outerPortals = bb.map(e => new Portal(e, root, null));
+    this.outerPlanes = bb.map(e => e.plane);
+    const p = this.root.portals;
+    console.log(this.outerPortals);
+    for (let portal of this.outerPortals)
+      p.add(portal);
+  }
+
+  build(node=null) {
+    node ??= this.root;
+    if (node.isLeaf) return;
+    const front = node.front;
+    const back = node.back;
+    let pp = node.createPlanePolygon();
+    for (let outerPlane of this.outerPlanes) {
+      let front = pp.slice(outerPlane).at(0);
+      if (front) {
+        pp = front;
+      } else {
+        throw "Outer plane cut away new portal";
+      }
+    }
+    for (let n = node; n.parent; n = n.parent) {
+      let plane = n.parent.plane;
+      let index = n.parent.front === n ? 0 : 1;
+      let remaining = pp.slice(plane).at(index);
+      if (remaining) {
+        pp = remaining;
+      } else {
+        throw "BSP node plane cut away new portal";
+      }
+    }
+    const ownPortal = new Portal(pp, node.front, node.back);
+    front.portals.add(ownPortal);
+    back.portals.add(ownPortal);
+    for (let portal of node.portals) {
+      portal.slice(node);
+    }
+    this.build(node.front);
+    this.build(node.back);
+  }
+}
+
+function buildPortals(node) {
+  new PortalBuilder(node).build();
 }
 
 function buildBSP(vertexArray, indexArray) {
@@ -151,7 +429,9 @@ function buildBSP(vertexArray, indexArray) {
     let p = indexArray.slice(i, i + 3).map(e => vertexArray[e]);
     polys.push(new Polygon(p));
   }
-  return buildNode(polys);
+  let root = buildNode(polys);
+  buildPortals(root);
+  return root;
 }
 
 function createEdgeKey(a, b) {
