@@ -89,6 +89,10 @@ function replaceSame(val, ifSame, valueThen) {
   return val === ifSame ? valueThen : val;
 }
 
+function normalOf(a, b, c) {
+  return vnormalize(crossProduct(vsub(b, a), vsub(c, a)));
+}
+
 class Polygon {
   verts;
   normal;
@@ -96,8 +100,38 @@ class Polygon {
 
   constructor(verts, normal=null) {
     this.verts = Array.from(verts);
-    this.normal = normal ?? vnormalize(crossProduct(vsub(verts[1], verts[0]), vsub(verts[2], verts[0])));
+    this.normal = normal ?? normalOf(verts[0], verts[1], verts[2]);
     this.plane = [...this.normal, dotProduct(this.normal, verts[0])];
+  }
+
+  isValid() {
+    // check if planar
+    for (let vert of this.verts) {
+      if (Math.abs(signedDistance(this.plane, vert)) > ON_EPSILON)
+        return false;
+    }
+    if (vlenSq(this.normal) < 0.5)
+      return false;
+    return true;
+  }
+
+  isCutBy(plane) {
+    let hasFront = false;
+    let hasBack = false;
+    for (let vert of this.verts) {
+      let dist = signedDistance(plane, vert);
+      if (dist < -ON_EPSILON) {
+        if (hasFront)
+          return true;
+        hasBack = true;
+      }
+      if (dist > ON_EPSILON) {
+        if (hasBack)
+          return true;
+        hasFront = true;
+      }
+    }
+    return false;
   }
 
   slice(plane) {
@@ -139,11 +173,21 @@ class Portal {
   poly;
   front;
   back;
+  source = null;
 
   constructor(poly, front, back) {
     this.poly = poly;
     this.front = front;
     this.back = back;
+    if (!this.poly.isValid()) {
+      throw "Portal poly is invalid";
+    }
+  }
+
+  otherSide(node) {
+    return node === this.front
+        ? this.back
+        : node === this.back ? this.front : null;
   }
 
   slice(node) {
@@ -169,6 +213,8 @@ class Portal {
     }
     const frontPortal = new Portal(fp, replaceSame(this.front, node, frontNode), replaceSame(this.back, node, frontNode));
     const backPortal = new Portal(bp, replaceSame(this.front, node, backNode), replaceSame(this.back, node, backNode));
+    frontPortal.source = this.source;
+    backPortal.source = this.source;
     this.#removeFromNodes();
     frontPortal.#addToNodes();
     backPortal.#addToNodes();
@@ -195,6 +241,10 @@ class Portal {
   #addToNodes() {
     if (this.front) this.front.portals.add(this);
     if (this.back) this.back.portals.add(this);
+  }
+
+  addToNodes() {
+    this.#addToNodes();
   }
 }
 
@@ -223,6 +273,11 @@ class BSPNode {
 
   get isLeaf() {
     return this.plane === null;
+  }
+
+  collectLeaves() {
+    if (this.isLeaf) return [this];
+    return this.front.collectLeaves().concat(this.back.collectLeaves());
   }
 
   createPlanePolygon() {
@@ -317,16 +372,31 @@ function choosePolygon(polys) {
     if (max === null || d > max) max = d;
   }
   let c = (min + max) * 0.5;
+  let cs = (max - min) * 0.05;
   let dc = null;
   let sel = null;
+
+  let lcsel = null;
+  let lcc = null;
   for (let poly of polys) {
     let d = Math.abs(c - poly.plane[3]);
+    if (d < cs) {
+      let cutCount = 0;
+      for (let other of polys) {
+        if (other !== poly && other.isCutBy(poly.plane))
+          ++cutCount;
+      }
+      if (lcc === null || lcc > cutCount) {
+        lcsel = poly;
+        lcc = cutCount;
+      }
+    }
     if (dc === null || dc > d) {
       dc = d;
       sel = poly;
     }
   }
-  return sel;
+  return lcsel ?? sel;
 }
 
 function buildNode(polys, node = null) {
@@ -359,6 +429,7 @@ function buildNode(polys, node = null) {
     }
     const frontNode = new BSPNode(node);
     const backNode = new BSPNode(node);
+    frontNode.solid = false;
     backNode.solid = true;
     node.front = fronts.length ? buildNode(fronts, frontNode) : frontNode;
     node.back = backs.length ? buildNode(backs, backNode) : backNode;
@@ -409,9 +480,9 @@ class PortalBuilder {
       }
     }
     const ownPortal = new Portal(pp, node.front, node.back);
-    front.portals.add(ownPortal);
-    back.portals.add(ownPortal);
-    for (let portal of node.portals) {
+    ownPortal.source = node;
+    ownPortal.addToNodes();
+    for (let portal of Array.from(node.portals)) {
       portal.slice(node);
     }
     this.build(node.front);
@@ -419,8 +490,24 @@ class PortalBuilder {
   }
 }
 
-function buildPortals(node) {
-  new PortalBuilder(node).build();
+function buildPortals(root) {
+  new PortalBuilder(root).build();
+}
+
+function exportBoundingPortals(root) {
+  let allPortals = root.collectLeaves()
+      .filter(e => e.solid)
+      .flatMap(e => Array.from(e.portals));
+  console.log(allPortals.filter(p => !p.poly.isValid()));
+  const boundingPortalVerts = allPortals.filter(e => e.front && e.back && (e.front.solid || e.back.solid))
+      .map(e => e.poly.verts);
+  const verts = [], faces = [];
+  for (let portalVerts of boundingPortalVerts) {
+    const baseIndex = verts.length;
+    verts.push(...portalVerts.map(coords => "v "+coords.join(" ")));
+    faces.push("f "+portalVerts.map((_, i) => i + baseIndex + 1).join(" "));
+  }
+  return verts.concat(faces).join("\n");
 }
 
 function buildBSP(vertexArray, indexArray) {

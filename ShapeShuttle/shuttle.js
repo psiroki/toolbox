@@ -355,7 +355,8 @@ async function handleModelFile(file) {
       vbPos += stride;
     }
 
-    console.log(buildBSP(rawVertex, rawIndex));
+    const bspRoot = buildBSP(rawVertex, rawIndex);
+    console.log(bspRoot);
 
     const headerBuffer = new ArrayBuffer(3 * 4);
     new Uint8Array(headerBuffer).set(Array.from("MDZ0").map(s => s.charCodeAt(0)), 0);
@@ -363,21 +364,29 @@ async function handleModelFile(file) {
     hdv.setUint32(4, vertexCount, true);
     hdv.setUint32(8, indexCount, true);
 
-    const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
-    modelBlob.arrayBuffer().then(combined => {
-      const crc = crc32hex(new Uint8Array(combined));
-      const rawName = (file?.name || "").replace(/\.[^\.]+$/, "") || "model";
-      const buttonBar = document.createElement("div");
+    const createDownloadAnchor = async (blob, meshIndex, meshName, buttonBar, buttonBaseName, rawName, ext) => {
+      const crc = crc32hex(new Uint8Array(await blob.arrayBuffer()));
       const saveLink = document.createElement("a");
-      const name = mesh.name;
-      saveLink.textContent = name ? "Save "+name : "Save";
-      saveLink.href = URL.createObjectURL(modelBlob);
-      saveLink.download = rawName+"_"+crc+".mdz";
+      const name = meshName;
+      saveLink.textContent = name ? buttonBaseName+" "+name : buttonBaseName;
+      saveLink.href = URL.createObjectURL(blob);
+      saveLink.download = rawName+"_"+crc+"."+ext;
       saveLink.classList.add("saveLink");
       buttonBar.append(saveLink);
       meshNodes[meshIndex]?.querySelector(".json_objectOpen")?.after(saveLink.cloneNode(true));
-      infoContent.append(buttonBar);
-    });
+      return saveLink;
+    };
+
+    const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
+    const portalBlob = new Blob([exportBoundingPortals(bspRoot)], { type: "application/octet-stream" });
+
+    const rawName = (file?.name || "").replace(/\.[^\.]+$/, "") || "model";
+    const portalRawName = rawName === "model" ? "portals" : rawName;
+    const buttonBar = document.createElement("div");
+    infoContent.append(buttonBar);
+
+    createDownloadAnchor(modelBlob, meshIndex, mesh.name, buttonBar, "Save", rawName, "mdz");
+    createDownloadAnchor(portalBlob, meshIndex, mesh.name, buttonBar, "Portals", portalRawName, "obj");
 
     if (vertexCount <= 25) {
       let vertices = [];
