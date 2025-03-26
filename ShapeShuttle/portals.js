@@ -93,15 +93,50 @@ function normalOf(a, b, c) {
   return vnormalize(crossProduct(vsub(b, a), vsub(c, a)));
 }
 
+class VertexSource {
+  plane;
+  tag;
+
+  constructor(plane, tag) {
+    this.plane = plane;
+    this.tag = tag;
+  }
+}
+
+class VertexSliceInfo {
+  cutter;
+  incidents = [];
+
+  constructor(cutter) {
+    if (cutter instanceof VertexSliceInfo) {
+      this.cutter = cutter.cutter;
+      this.incidents = Array.from(cutter.incidents);
+    } else {
+      this.cutter = cutter;
+    }
+  }
+}
+
 class Polygon {
   verts;
   normal;
   plane;
 
-  constructor(verts, normal=null) {
-    this.verts = Array.from(verts);
+  constructor(verts, normal=null, sourcesOrFill=null) {
+    let sources = Array.isArray(sourcesOrFill) ? sourcesOrFill : new Array(verts.length).fill(sourcesOrFill);
+    this.verts = Array.from(verts, (vert, i) => {
+      let nv = Array.from(vert);
+      if (vert.source) nv.source = vert.source;
+      if (sources[i]) nv.source = new VertexSliceInfo(sources[i]);
+      return nv;
+    });
     this.normal = normal ?? normalOf(verts[0], verts[1], verts[2]);
     this.plane = [...this.normal, dotProduct(this.normal, verts[0])];
+  }
+
+  fillSources(source) {
+    for (let vert of this.verts)
+      vert.source = new VertexSliceInfo(source);
   }
 
   isValid() {
@@ -134,7 +169,7 @@ class Polygon {
     return false;
   }
 
-  slice(plane) {
+  slice(plane, tag = null) {
     let front = [];
     let back = [];
     let frontValid = false;
@@ -147,9 +182,11 @@ class Polygon {
         dist > ON_EPSILON && lastDist < -ON_EPSILON) {
         const t = dist / (dist - lastDist);
         const c = vmad(vert, vsub(lastVert, vert), t);
+        if (tag) c.source = new VertexSliceInfo(new VertexSource(plane, tag));
         front.push(c);
         back.push(c);
       } else if (dist <= ON_EPSILON && dist >= -ON_EPSILON) {
+        if (vert.source) vert.source.incidents.push(new VertexSource(plane, tag));
         front.push(vert);
         back.push(vert);
       }
@@ -194,7 +231,7 @@ class Portal {
     const plane = node.plane;
     const frontNode = node.front;
     const backNode = node.back;
-    const [fp, bp] = this.poly.slice(plane);
+    const [fp, bp] = this.poly.slice(plane, node);
     if (fp === null && bp === null) {
       // coplanar, this is bad, I think
       throw "Coplanar portal found";
@@ -254,13 +291,15 @@ class BSPNode {
   front = null;
   back = null;
   parent = null;
+  root = null;
   #portals = null;
   solid = false;
   mins = null;
   maxs = null;
 
-  constructor(parent = null) {
+  constructor(parent = null, root = null) {
     this.parent = parent;
+    this.root = root ?? this;
   }
 
   get portals() {
@@ -297,7 +336,7 @@ class BSPNode {
       vmad(vmad(center, up, -1), side,  1),
       vmad(vmad(center, up,  1), side,  1),
     ];
-    return new Polygon(points);
+    return new Polygon(points, null, this);
   }
 
   createScaledBoundingBox(s) {
@@ -316,48 +355,48 @@ class BSPNode {
     
     // Create the 6 faces of the box as Polygons
     let polygons = [
-        // Front face (z max)
-        [
-            [scaledMins[0], scaledMins[1], scaledMaxs[2]],
-            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
-            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]]
-        ],
-        // Back face (z min)
-        [
-            [scaledMins[0], scaledMins[1], scaledMins[2]],
-            [scaledMins[0], scaledMaxs[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMins[1], scaledMins[2]]
-        ],
-        // Top face (y max)
-        [
-            [scaledMins[0], scaledMaxs[1], scaledMins[2]],
-            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]]
-        ],
-        // Bottom face (y min)
-        [
-            [scaledMins[0], scaledMins[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMins[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
-            [scaledMins[0], scaledMins[1], scaledMaxs[2]]
-        ],
-        // Right face (x max)
-        [
-            [scaledMaxs[0], scaledMins[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
-            [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
-            [scaledMaxs[0], scaledMins[1], scaledMaxs[2]]
-        ],
-        // Left face (x min)
-        [
-            [scaledMins[0], scaledMins[1], scaledMins[2]],
-            [scaledMins[0], scaledMins[1], scaledMaxs[2]],
-            [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
-            [scaledMins[0], scaledMaxs[1], scaledMins[2]]
-        ],
+      // Front face (z max)
+      [
+        [scaledMins[0], scaledMins[1], scaledMaxs[2]],
+        [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+        [scaledMins[0], scaledMaxs[1], scaledMaxs[2]]
+      ],
+      // Back face (z min)
+      [
+        [scaledMins[0], scaledMins[1], scaledMins[2]],
+        [scaledMins[0], scaledMaxs[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMins[1], scaledMins[2]]
+      ],
+      // Top face (y max)
+      [
+        [scaledMins[0], scaledMaxs[1], scaledMins[2]],
+        [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMins[2]]
+      ],
+      // Bottom face (y min)
+      [
+        [scaledMins[0], scaledMins[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMins[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMins[1], scaledMaxs[2]],
+        [scaledMins[0], scaledMins[1], scaledMaxs[2]]
+      ],
+      // Right face (x max)
+      [
+        [scaledMaxs[0], scaledMins[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMins[2]],
+        [scaledMaxs[0], scaledMaxs[1], scaledMaxs[2]],
+        [scaledMaxs[0], scaledMins[1], scaledMaxs[2]]
+      ],
+      // Left face (x min)
+      [
+        [scaledMins[0], scaledMins[1], scaledMins[2]],
+        [scaledMins[0], scaledMins[1], scaledMaxs[2]],
+        [scaledMins[0], scaledMaxs[1], scaledMaxs[2]],
+        [scaledMins[0], scaledMaxs[1], scaledMins[2]]
+      ],
     ].map(points => new Polygon(points));
     
     return polygons;
@@ -372,7 +411,7 @@ function choosePolygon(polys) {
     if (max === null || d > max) max = d;
   }
   let c = (min + max) * 0.5;
-  let cs = (max - min) * 0.05;
+  let cs = (max - min) * 5;
   let dc = null;
   let sel = null;
 
@@ -399,8 +438,9 @@ function choosePolygon(polys) {
   return lcsel ?? sel;
 }
 
-function buildNode(polys, node = null) {
-  node ??= new BSPNode(null);
+function buildNode(polys, node = null, root = null) {
+  node ??= new BSPNode(null, root);
+  root ??= node.root;
   if (polys.length) {
     let mins = polys.reduce((prev, current) => {
       const polyMin = vmin(current.verts);
@@ -427,8 +467,8 @@ function buildNode(polys, node = null) {
       if (front) fronts.push(poly);
       if (back) backs.push(poly);
     }
-    const frontNode = new BSPNode(node);
-    const backNode = new BSPNode(node);
+    const frontNode = new BSPNode(node, root);
+    const backNode = new BSPNode(node, root);
     frontNode.solid = false;
     backNode.solid = true;
     node.front = fronts.length ? buildNode(fronts, frontNode) : frontNode;
@@ -446,8 +486,12 @@ class PortalBuilder {
     this.root = root;
     // turn it inside out, I need the polygons to point inwards
     const bb = root.createScaledBoundingBox(-1.1);
+    const bbSource = new VertexSliceInfo(new VertexSource([0, 0, 0, 0], root));
     // all have node in the front and nothing in the back
-    this.outerPortals = bb.map(e => new Portal(e, root, null));
+    this.outerPortals = bb.map(p => {
+      p.fillSources(bbSource);
+      return new Portal(p, root, null);
+    });
     this.outerPlanes = bb.map(e => e.plane);
     const p = this.root.portals;
     console.log(this.outerPortals);
@@ -462,7 +506,7 @@ class PortalBuilder {
     const back = node.back;
     let pp = node.createPlanePolygon();
     for (let outerPlane of this.outerPlanes) {
-      let front = pp.slice(outerPlane).at(0);
+      let front = pp.slice(outerPlane, node.root).at(0);
       if (front) {
         pp = front;
       } else {
@@ -470,9 +514,10 @@ class PortalBuilder {
       }
     }
     for (let n = node; n.parent; n = n.parent) {
-      let plane = n.parent.plane;
-      let index = n.parent.front === n ? 0 : 1;
-      let remaining = pp.slice(plane).at(index);
+      let parent = n.parent;
+      let plane = parent.plane;
+      let index = parent.front === n ? 0 : 1;
+      let remaining = pp.slice(plane, parent).at(index);
       if (remaining) {
         pp = remaining;
       } else {
@@ -483,7 +528,7 @@ class PortalBuilder {
     ownPortal.source = node;
     ownPortal.addToNodes();
     for (let portal of Array.from(node.portals)) {
-      portal.slice(node);
+      portal.slice(node, portal.node);
     }
     this.build(node.front);
     this.build(node.back);
@@ -498,7 +543,7 @@ function exportBoundingPortals(root) {
   let allPortals = root.collectLeaves()
       .filter(e => e.solid)
       .flatMap(e => Array.from(e.portals));
-  console.log(allPortals.filter(p => !p.poly.isValid()));
+  console.log(allPortals.filter(p => p.front.solid !== p.back.solid).map(p => p.poly.verts.map(v => v.source)));
   const boundingPortalVerts = allPortals.filter(e => e.front && e.back && (e.front.solid || e.back.solid))
       .map(e => e.poly.verts);
   const verts = [], faces = [];
