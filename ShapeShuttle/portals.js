@@ -107,13 +107,32 @@ class VertexSliceInfo {
   cutter;
   incidents = [];
 
-  constructor(cutter) {
-    if (cutter instanceof VertexSliceInfo) {
-      this.cutter = cutter.cutter;
-      this.incidents = Array.from(cutter.incidents);
+  constructor(cutterOrCopyBase) {
+    if (cutterOrCopyBase instanceof VertexSliceInfo) {
+      this.cutter = cutterOrCopyBase.cutter;
+      this.incidents = Array.from(cutterOrCopyBase.incidents);
     } else {
-      this.cutter = cutter;
+      this.cutter = cutterOrCopyBase;
     }
+  }
+}
+
+class VertexIncidence {
+  vertex = null;
+  incidenceIndices = [];
+
+  constructor(vertex, planes) {
+    this.vertex = vertex;
+    for (let i = 0; i < planes.length; ++i) {
+      let p = planes[i];
+      let dist = signedDistance(p, vertex);
+      if (Math.abs(dist) < ON_EPSILON)
+        this.incidenceIndices.push(i);
+    }
+  }
+
+  toString() {
+    return this.incidenceIndices.join(",");
   }
 }
 
@@ -178,6 +197,7 @@ class Polygon {
     let lastDist = signedDistance(plane, lastVert);
     for (let vert of this.verts) {
       let dist = signedDistance(plane, vert);
+
       if (dist < -ON_EPSILON && lastDist > ON_EPSILON ||
         dist > ON_EPSILON && lastDist < -ON_EPSILON) {
         const t = dist / (dist - lastDist);
@@ -185,17 +205,28 @@ class Polygon {
         if (tag) c.source = new VertexSliceInfo(new VertexSource(plane, tag));
         front.push(c);
         back.push(c);
-      } else if (dist <= ON_EPSILON && dist >= -ON_EPSILON) {
-        if (vert.source) vert.source.incidents.push(new VertexSource(plane, tag));
-        front.push(vert);
-        back.push(vert);
       }
-      if (dist < -ON_EPSILON) {
-        back.push(vert);
-        backValid = true;
-      } else if (dist > ON_EPSILON) {
+      
+      if (dist <= ON_EPSILON && dist >= -ON_EPSILON) {
+        let fv = vert, bv = vert;
+        if (tag && vert.source) {
+          fv = Array.from(vert);
+          bv = Array.from(vert);
+          fv.source = new VertexSliceInfo(vert.source);
+          bv.source = new VertexSliceInfo(vert.source);
+          fv.source.incidents.push(new VertexSource(plane, tag));
+          bv.source.incidents.push(new VertexSource(plane, tag));
+        }
         front.push(vert);
-        frontValid = true;
+        back.push(vert);
+      } else {
+        if (dist < 0) {
+          back.push(vert);
+          backValid = true;
+        } else {
+          front.push(vert);
+          frontValid = true;
+        }
       }
       lastDist = dist;
       lastVert = vert;
@@ -286,6 +317,7 @@ class Portal {
 }
 
 class BSPNode {
+  index = null;
   plane = null;
   polys = [];
   front = null;
@@ -319,9 +351,19 @@ class BSPNode {
     return this.front.collectLeaves().concat(this.back.collectLeaves());
   }
 
+  collectPlanes(appendTo=null) {
+    appendTo ??= [];
+    if (this.plane) {
+      appendTo.push(this.plane);
+      this.front.collectPlanes(appendTo);
+      this.back.collectPlanes(appendTo);
+    }
+    return appendTo;
+  }
+
   createPlanePolygon() {
-    let center = vscale(vadd(this.maxs, this.mins), 0.5);
-    const size = vlen(vsub(this.maxs, this.mins)) * 2.0;
+    let center = vscale(vadd(this.root.maxs, this.root.mins), 0.5);
+    const size = vlen(vsub(this.root.maxs, this.root.mins)) * 2.0;
     let helper = vorigin();
     helper[vminDim(this.plane)] = 1;
     let up = vnormalize(crossProduct(this.plane, helper));
@@ -438,20 +480,27 @@ function choosePolygon(polys) {
   return lcsel ?? sel;
 }
 
+function calculateMinsMaxs(polys) {
+  let mins = polys.reduce((prev, current) => {
+    const polyMin = vmin(current.verts);
+    return prev ? vmin([prev, polyMin]) : polyMin;
+  }, null);
+  let maxs = polys.reduce((prev, current) => {
+    const polyMin = vmax(current.verts);
+    return prev ? vmax([prev, polyMin]) : polyMin;
+  }, null);
+  return [mins, maxs];
+}
+
 function buildNode(polys, node = null, root = null) {
   node ??= new BSPNode(null, root);
   root ??= node.root;
   if (polys.length) {
-    let mins = polys.reduce((prev, current) => {
-      const polyMin = vmin(current.verts);
-      return prev ? vmin([prev, polyMin]) : polyMin;
-    }, null);
-    let maxs = polys.reduce((prev, current) => {
-      const polyMin = vmax(current.verts);
-      return prev ? vmax([prev, polyMin]) : polyMin;
-    }, null);
-    node.mins = mins;
-    node.maxs = maxs;
+    if (node === root) {
+      let [mins, maxs] = calculateMinsMaxs(polys);
+      node.mins = mins;
+      node.maxs = maxs;
+    }
     const sp = choosePolygon(polys);
     const plane = sp.plane;
     node.plane = plane;
@@ -544,15 +593,65 @@ function exportBoundingPortals(root) {
       .filter(e => e.solid)
       .flatMap(e => Array.from(e.portals));
   console.log(allPortals.filter(p => p.front.solid !== p.back.solid).map(p => p.poly.verts.map(v => v.source)));
-  const boundingPortalVerts = allPortals.filter(e => e.front && e.back && (e.front.solid || e.back.solid))
+  // grab a "random" portal for now
+  let leafPortal = allPortals.filter(p => p.front.solid !== p.back.solid).at(-1);
+  let leaf = leafPortal.front.solid ? leafPortal.front : leafPortal.back;
+  // we're going to chamfer "leaf"
+  let leafRoot = buildLeafBSP(leaf);
+  let leafPlanes = leafRoot.collectPlanes();
+  let vertexByIdentity = new Map();
+  const leafLeaves = leafRoot.collectLeaves().filter(e => e.solid);
+  const effectiveLeafVerts = leafLeaves.flatMap(e => Array.from(e.portals))
+        // allPortals.filter(e => e.front && e.back &&
+        // (e.front === selectedLeaf || e.back === selectedLeaf) &&
+        // (e.front.solid !== e.back.solid))
       .map(e => e.poly.verts);
+  for (let vert of effectiveLeafVerts.flatMap(e => e)) {
+    let value = new VertexIncidence(vert, leafPlanes);
+    vertexByIdentity.set(value.toString(), value);
+  }
+  console.log(leafPlanes);
+  console.log(vertexByIdentity);
   const verts = [], faces = [];
-  for (let portalVerts of boundingPortalVerts) {
+  for (let portalVerts of effectiveLeafVerts) {
     const baseIndex = verts.length;
     verts.push(...portalVerts.map(coords => "v "+coords.join(" ")));
     faces.push("f "+portalVerts.map((_, i) => i + baseIndex + 1).join(" "));
   }
+  console.log(effectiveLeafVerts.map(verts => verts.map(v => v.source)));
   return verts.concat(faces).join("\n");
+}
+
+function buildLeafBSP(leaf) {
+  let portals = Array.from(leaf.portals);
+  let [mins, maxs] = calculateMinsMaxs(portals.map(e => e.poly));
+  let planes = Array.from(new Set(portals.map(e => e.source))).map(bspNode => bspNode.plane);
+  let leafRoot = buildLeafNodes(planes, mins, maxs);
+  buildPortals(leafRoot);
+  return leafRoot;
+}
+
+function buildLeafNodes(planes, mins, maxs) {
+  let root = null;
+  let parent = null;
+  let last = null;
+  let index = 0;
+  for (let plane of planes) {
+    last = new BSPNode(parent, root);
+    last.index = index++;
+    last.solid = false;
+    last.mins = mins;
+    last.maxs = maxs;
+    last.front = new BSPNode(last, root);
+    last.plane = plane;
+    last.front.solid = false;
+    if (parent) parent.back = last;
+    root ??= last;
+    parent = last;
+  }
+  last.back = new BSPNode(last, root);
+  last.back.solid = true;
+  return root;
 }
 
 function buildBSP(vertexArray, indexArray) {
