@@ -378,7 +378,12 @@ async function handleModelFile(file) {
     };
 
     const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
-    const portalBlob = new Blob([exportBoundingPortals(bspRoot)], { type: "application/octet-stream" });
+    let portalBlob = null;
+    try {
+      portalBlob = new Blob([exportBoundingPortals(bspRoot)], { type: "application/octet-stream" });
+    } catch (e) {
+      console.error(e, e.stack);
+    }
 
     const rawName = (file?.name || "").replace(/\.[^\.]+$/, "") || "model";
     const portalRawName = rawName === "model" ? "portals" : rawName;
@@ -386,7 +391,8 @@ async function handleModelFile(file) {
     infoContent.append(buttonBar);
 
     createDownloadAnchor(modelBlob, meshIndex, mesh.name, buttonBar, "Save", rawName, "mdz");
-    createDownloadAnchor(portalBlob, meshIndex, mesh.name, buttonBar, "Portals", portalRawName, "obj");
+    if (portalBlob)
+      createDownloadAnchor(portalBlob, meshIndex, mesh.name, buttonBar, "Portals", portalRawName, "obj");
 
     if (vertexCount <= 25) {
       let vertices = [];

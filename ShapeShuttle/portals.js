@@ -60,7 +60,7 @@ function vminDim(v) {
 }
 
 function signedDistance(plane, point) {
-  return dotProduct(plane, point) - plane[3];
+  return dotProduct(plane, point) + plane[3];
 }
 
 function vmin(vectors) {
@@ -150,7 +150,7 @@ class Polygon {
       return nv;
     });
     this.normal = normal ?? normalOf(verts[0], verts[1], verts[2]);
-    this.plane = [...this.normal, dotProduct(this.normal, verts[0])];
+    this.plane = [...this.normal, -dotProduct(this.normal, verts[0])];
   }
 
   fillSources(source) {
@@ -598,7 +598,7 @@ function exportBoundingPortals(root) {
   let leaf = leafPortal.front.solid ? leafPortal.front : leafPortal.back;
   // we're going to chamfer "leaf"
   let leafRoot = buildLeafBSP(leaf);
-  let leafPlanes = leafRoot.collectPlanes();
+  const leafPlanes = leafRoot.collectPlanes();
   let vertexByIdentity = new Map();
   const leafLeaves = leafRoot.collectLeaves().filter(e => e.solid);
   const effectiveLeafVerts = leafLeaves.flatMap(e => Array.from(e.portals))
@@ -606,10 +606,53 @@ function exportBoundingPortals(root) {
         // (e.front === selectedLeaf || e.back === selectedLeaf) &&
         // (e.front.solid !== e.back.solid))
       .map(e => e.poly.verts);
+  const vertsByPlane = new Map();
   for (let vert of effectiveLeafVerts.flatMap(e => e)) {
     let value = new VertexIncidence(vert, leafPlanes);
     vertexByIdentity.set(value.toString(), value);
   }
+  for (let vi of vertexByIdentity.values()) {
+    for (let planeIndex of vi.incidenceIndices) {
+      let arr = vertsByPlane.get(planeIndex);
+      if (!arr) vertsByPlane.set(planeIndex, arr = []);
+      arr.push(vi);
+    }
+  }
+  let chamferPlanes = Array.from(vertexByIdentity.values(), vi => {
+    let n = vnormalize(vi.incidenceIndices
+        .map(i => leafPlanes[i])
+        .reduce((prev, curr) => prev ? vadd(prev, curr) : curr, null));
+    return [...n, -dotProduct(n, vi.vertex)];
+  });
+  for (let i = 0; i < leafPlanes.length - 1; ++i) {
+    let incidences = vertsByPlane.get(i);
+    if (incidences) {
+      for (let j = i + 1; j < leafPlanes.length; ++j) {
+        for (let vi of incidences) {
+          if (vi.incidenceIndices.indexOf(j) >= 0) {
+            // i and j make an edge at vi
+            let n = vnormalize(vadd(leafPlanes[i], leafPlanes[j]));
+            let newPlane = [...n, -dotProduct(n, vi.vertex)];
+            chamferPlanes.push(newPlane);
+          }
+        }
+      }
+    }
+  }
+  let fatPlanes = [...leafPlanes, ...chamferPlanes].map(plane => {
+    let newPlane = Array.from(plane);
+    newPlane[3] += 1;
+    return newPlane;
+  });
+  let center = vscale(vadd(leafRoot.mins, leafRoot.maxs), 0.5);
+  // it should be half, but we don't multiply it, so it will grow double
+  let halfNewSize = vsub(leafRoot.maxs, leafRoot.mins);
+  let chamferedRoot = buildLeafNodes(fatPlanes, vsub(center, halfNewSize), vadd(center, halfNewSize));
+  buildPortals(chamferedRoot);
+  effectiveLeafVerts = chamferedRoot.collectLeaves()
+      .filter(e => e.solid)
+      .flatMap(e => Array.from(e.portals))
+      .map(e => e.poly.verts);
   console.log(leafPlanes);
   console.log(vertexByIdentity);
   const verts = [], faces = [];
