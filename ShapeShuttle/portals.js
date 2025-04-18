@@ -248,7 +248,7 @@ class Portal {
     this.front = front;
     this.back = back;
     if (!this.poly.isValid()) {
-      throw "Portal poly is invalid";
+      throw new Error("Portal poly is invalid");
     }
   }
 
@@ -265,7 +265,7 @@ class Portal {
     const [fp, bp] = this.poly.slice(plane, node);
     if (fp === null && bp === null) {
       // coplanar, this is bad, I think
-      throw "Coplanar portal found";
+      throw new Error("Coplanar portal found");
     }
     if (fp === null) {
       // it's in the back
@@ -559,7 +559,7 @@ class PortalBuilder {
       if (front) {
         pp = front;
       } else {
-        throw "Outer plane cut away new portal";
+        throw new Error("Outer plane cut away new portal");
       }
     }
     for (let n = node; n.parent; n = n.parent) {
@@ -570,7 +570,7 @@ class PortalBuilder {
       if (remaining) {
         pp = remaining;
       } else {
-        throw "BSP node plane cut away new portal";
+        throw new Error("BSP node plane cut away new portal");
       }
     }
     const ownPortal = new Portal(pp, node.front, node.back);

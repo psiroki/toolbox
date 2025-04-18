@@ -301,7 +301,7 @@ async function handleModelFile(file) {
   const attrs = "POSITION,NORMAL,TEXCOORD_0".split(/,/g);
   for (let meshIndex = 0; meshIndex < gltf.meshes.length; ++meshIndex) {
     const mesh = gltf.meshes[meshIndex];
-    if (mesh.primitives.length !== 1) throw "Unimplemented: more than 1 primitive per mesh";
+    if (mesh.primitives.length !== 1) throw new Error("Unimplemented: more than 1 primitive per mesh");
     const p = mesh.primitives[0];
     const adapters = attrs.map(a => new VectorAdapter(gltf.accessors[p.attributes[a]], a));
     const indexAdapter = new VectorAdapter(gltf.accessors[p.indices], "indices", WebGLRenderingContext.UNSIGNED_SHORT);
@@ -309,7 +309,7 @@ async function handleModelFile(file) {
     let stride = 0;
     for (let adapter of adapters) {
       if (vertexCount !== -1 && vertexCount !== adapter.accessor.count) {
-        throw "Unexpected: count for "+adapter.attr+" is "+adapter.accessor.count+" and not "+vertexCount;
+        throw new Error("Unexpected: count for "+adapter.attr+" is "+adapter.accessor.count+" and not "+vertexCount);
       }
       vertexCount = adapter.accessor.count;
       stride += adapter.targetSize;
@@ -319,7 +319,7 @@ async function handleModelFile(file) {
     let vbOffset = 0;
     for (let adapter of adapters) {
       let bufferView = gltf.bufferViews[adapter.accessor.bufferView];
-      if (bufferView.buffer) throw "Unexpected nonzero buffer index";
+      if (bufferView.buffer) throw new Error("Unexpected nonzero buffer index");
       let inPos = bufferView.byteOffset;
       let vbPos = vbOffset;
       for (let i = 0; i < vertexCount; ++i) {
