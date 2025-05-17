@@ -448,7 +448,6 @@ function crc32hex(byteArray) {
 			r = (r >> 8) ^ CRC32_TABLE[byteArray[i] ^ (r & 0x000000FF)];
 			r &= 0xffffffff;
 	}
-	console.log("CRC: ", r.toString(16));
 	let result = [];
 	for (let i=0; i<8; ++i) {
 		result.push(((r>>(28-i*4))&0xf).toString(16));

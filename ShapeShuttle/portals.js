@@ -93,6 +93,32 @@ function normalOf(a, b, c) {
   return vnormalize(crossProduct(vsub(b, a), vsub(c, a)));
 }
 
+class WavefrontExporter {
+  vertLines = [];
+  faceLines = [];
+
+  addPoly(poly) {
+    return this.addVerts(poly.verts);
+  }
+
+  addPolys(polys) {
+    for (let poly of polys)
+      this.addVerts(poly.verts);
+    return this;
+  }
+
+  addVerts(verts) {
+    const baseIndex = this.vertLines.length;
+    this.vertLines.push(...verts.map(coords => "v "+coords.join(" ")));
+    this.faceLines.push("f "+verts.map((_, i) => i + baseIndex + 1).join(" "));
+    return this;
+  }
+
+  toString() {
+    return this.vertLines.concat(this.faceLines).join("\n");
+  }
+}
+
 class VertexSource {
   plane;
   tag;
@@ -566,10 +592,12 @@ class PortalBuilder {
       let parent = n.parent;
       let plane = parent.plane;
       let index = parent.front === n ? 0 : 1;
-      let remaining = pp.slice(plane, parent).at(index);
+      let sliceResult = pp.slice(plane, parent);
+      let remaining = sliceResult[index];
       if (remaining) {
         pp = remaining;
       } else {
+        console.log(pp.plane, plane, sliceResult, pp);
         throw new Error("BSP node plane cut away new portal");
       }
     }
@@ -599,18 +627,21 @@ function exportBoundingPortals(root) {
   // we're going to chamfer "leaf"
   let leafRoot = buildLeafBSP(leaf);
   const leafPlanes = leafRoot.collectPlanes();
-  let vertexByIdentity = new Map();
   const leafLeaves = leafRoot.collectLeaves().filter(e => e.solid);
-  const effectiveLeafVerts = leafLeaves.flatMap(e => Array.from(e.portals))
-        // allPortals.filter(e => e.front && e.back &&
-        // (e.front === selectedLeaf || e.back === selectedLeaf) &&
-        // (e.front.solid !== e.back.solid))
+  let effectiveLeafVerts = leafLeaves.flatMap(e => Array.from(e.portals))
       .map(e => e.poly.verts);
-  const vertsByPlane = new Map();
+  // Collect the vertices (vectors) that are in the incidence of 3 or more planes
+  // The key is a string representation of the inciding plane indices
+  // (in strictly monotonically increasing order), the value is a VertexIncidence
+  // object which contains this index list as an array and the position as well.
+  // The key is the vertex identity, if it overlaps
+  const vertexByIdentity = new Map();
   for (let vert of effectiveLeafVerts.flatMap(e => e)) {
     let value = new VertexIncidence(vert, leafPlanes);
     vertexByIdentity.set(value.toString(), value);
   }
+  // Plane index to vertex incidence object
+  const vertsByPlane = new Map();
   for (let vi of vertexByIdentity.values()) {
     for (let planeIndex of vi.incidenceIndices) {
       let arr = vertsByPlane.get(planeIndex);
@@ -618,12 +649,15 @@ function exportBoundingPortals(root) {
       arr.push(vi);
     }
   }
+  // Vertex chamfer planes
   let chamferPlanes = Array.from(vertexByIdentity.values(), vi => {
     let n = vnormalize(vi.incidenceIndices
         .map(i => leafPlanes[i])
         .reduce((prev, curr) => prev ? vadd(prev, curr) : curr, null));
     return [...n, -dotProduct(n, vi.vertex)];
   });
+  let edgePairs = [];
+  // Edge chamfer planes
   for (let i = 0; i < leafPlanes.length - 1; ++i) {
     let incidences = vertsByPlane.get(i);
     if (incidences) {
@@ -631,17 +665,20 @@ function exportBoundingPortals(root) {
         for (let vi of incidences) {
           if (vi.incidenceIndices.indexOf(j) >= 0) {
             // i and j make an edge at vi
+            edgePairs.push(i+","+j);
             let n = vnormalize(vadd(leafPlanes[i], leafPlanes[j]));
             let newPlane = [...n, -dotProduct(n, vi.vertex)];
             chamferPlanes.push(newPlane);
+            break;
           }
         }
       }
     }
   }
+  // Export a fattened version of the leaf for now to check if it's working
   let fatPlanes = [...leafPlanes, ...chamferPlanes].map(plane => {
     let newPlane = Array.from(plane);
-    newPlane[3] += 1;
+    newPlane[3] -= 1;
     return newPlane;
   });
   let center = vscale(vadd(leafRoot.mins, leafRoot.maxs), 0.5);
@@ -655,14 +692,12 @@ function exportBoundingPortals(root) {
       .map(e => e.poly.verts);
   console.log(leafPlanes);
   console.log(vertexByIdentity);
-  const verts = [], faces = [];
+  const exporter = new WavefrontExporter();
   for (let portalVerts of effectiveLeafVerts) {
-    const baseIndex = verts.length;
-    verts.push(...portalVerts.map(coords => "v "+coords.join(" ")));
-    faces.push("f "+portalVerts.map((_, i) => i + baseIndex + 1).join(" "));
+    exporter.addVerts(portalVerts);
   }
   console.log(effectiveLeafVerts.map(verts => verts.map(v => v.source)));
-  return verts.concat(faces).join("\n");
+  return exporter.toString();
 }
 
 function buildLeafBSP(leaf) {
