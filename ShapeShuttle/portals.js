@@ -16,6 +16,10 @@ function vsub(a, b) {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 
+function vneg(v) {
+  return [-v[0], -v[1], -v[2]];
+}
+
 function dotProduct(a, b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
@@ -61,6 +65,10 @@ function vminDim(v) {
 
 function signedDistance(plane, point) {
   return dotProduct(plane, point) + plane[3];
+}
+
+function flipPlane(plane) {
+  return [-plane[0], -plane[1], -plane[2], -plane[3]];
 }
 
 function vmin(vectors) {
@@ -569,7 +577,6 @@ class PortalBuilder {
     });
     this.outerPlanes = bb.map(e => e.plane);
     const p = this.root.portals;
-    console.log(this.outerPortals);
     for (let portal of this.outerPortals)
       p.add(portal);
   }
@@ -616,31 +623,37 @@ function buildPortals(root) {
   new PortalBuilder(root).build();
 }
 
-function exportBoundingPortals(root) {
-  let allPortals = root.collectLeaves()
+function exportCollisionModel(root) {
+  const exporter = new WavefrontExporter();
+  let collisionPrimitives = root.collectLeaves()
       .filter(e => e.solid)
-      .flatMap(e => Array.from(e.portals));
-  console.log(allPortals.filter(p => p.front.solid !== p.back.solid).map(p => p.poly.verts.map(v => v.source)));
-  // grab a "random" portal for now
-  let leafPortal = allPortals.filter(p => p.front.solid !== p.back.solid).at(-1);
-  let leaf = leafPortal.front.solid ? leafPortal.front : leafPortal.back;
-  // we're going to chamfer "leaf"
+      .map(e => generateLeafCollisionPlanes(e, exporter));
+  return exporter.toString();
+  //return JSON.stringify(collisionPrimitives);
+}
+
+function generateLeafCollisionPlanes(leaf, debugExporter) {
+  // Build a separate BSP from just this leaf
   let leafRoot = buildLeafBSP(leaf);
   const leafPlanes = leafRoot.collectPlanes();
-  const leafLeaves = leafRoot.collectLeaves().filter(e => e.solid);
-  let effectiveLeafVerts = leafLeaves.flatMap(e => Array.from(e.portals))
-      .map(e => e.poly.verts);
+  // Collect all the vertices from the solid leaves (it should be just one).
+  // Just a vertex soup.
+  const effectiveLeafVerts = leafRoot.collectLeaves()
+      .filter(e => e.solid)
+      .flatMap(e => Array.from(e.portals))
+      .flatMap(e => e.poly.verts);
   // Collect the vertices (vectors) that are in the incidence of 3 or more planes
   // The key is a string representation of the inciding plane indices
   // (in strictly monotonically increasing order), the value is a VertexIncidence
   // object which contains this index list as an array and the position as well.
   // The key is the vertex identity, if it overlaps
   const vertexByIdentity = new Map();
-  for (let vert of effectiveLeafVerts.flatMap(e => e)) {
+  for (let vert of effectiveLeafVerts) {
     let value = new VertexIncidence(vert, leafPlanes);
     vertexByIdentity.set(value.toString(), value);
   }
-  // Plane index to vertex incidence object
+  // This is just a simple optimization: I need those plane incidences, and
+  // the key will guarantee that one of them will be among them
   const vertsByPlane = new Map();
   for (let vi of vertexByIdentity.values()) {
     for (let planeIndex of vi.incidenceIndices) {
@@ -675,35 +688,50 @@ function exportBoundingPortals(root) {
       }
     }
   }
-  // Export a fattened version of the leaf for now to check if it's working
-  let fatPlanes = [...leafPlanes, ...chamferPlanes].map(plane => {
-    let newPlane = Array.from(plane);
-    newPlane[3] -= 1;
-    return newPlane;
-  });
-  let center = vscale(vadd(leafRoot.mins, leafRoot.maxs), 0.5);
-  // it should be half, but we don't multiply it, so it will grow double
-  let halfNewSize = vsub(leafRoot.maxs, leafRoot.mins);
-  let chamferedRoot = buildLeafNodes(fatPlanes, vsub(center, halfNewSize), vadd(center, halfNewSize));
-  buildPortals(chamferedRoot);
-  effectiveLeafVerts = chamferedRoot.collectLeaves()
-      .filter(e => e.solid)
-      .flatMap(e => Array.from(e.portals))
-      .map(e => e.poly.verts);
-  console.log(leafPlanes);
-  console.log(vertexByIdentity);
-  const exporter = new WavefrontExporter();
-  for (let portalVerts of effectiveLeafVerts) {
-    exporter.addVerts(portalVerts);
+  let collisionPlanes = leafPlanes.concat(chamferPlanes);
+  if (debugExporter) {
+    console.log("collisionPlanes", Array.from(collisionPlanes, e => Array.from(e)));
+    // Export a fattened version of the leaf for now to check if it's working
+    let fatPlanes = collisionPlanes.map(plane => {
+      let newPlane = Array.from(plane);
+      newPlane[3] -= 0.1;
+      return newPlane;
+    });
+    console.log("fatPlanes", fatPlanes);
+    let center = vscale(vadd(leafRoot.mins, leafRoot.maxs), 0.5);
+    // it should be half, but we don't multiply it, so it will grow double
+    let halfNewSize = vsub(leafRoot.maxs, leafRoot.mins);
+    let chamferedRoot = buildLeafNodes(fatPlanes, vsub(center, halfNewSize), vadd(center, halfNewSize));
+    buildPortals(chamferedRoot);
+    const debugPolys = chamferedRoot.collectLeaves()
+        .filter(e => e.solid)
+        .flatMap(e => Array.from(e.portals))
+        .map(e => e.poly);
+    const exporter = debugExporter;
+    exporter.addPolys(debugPolys);
+    console.log(debugPolys.map(poly => Array.from(poly.plane)));
+    console.log(debugPolys.map(poly => poly.verts.map(v => Array.from(v.source))));
   }
-  console.log(effectiveLeafVerts.map(verts => verts.map(v => v.source)));
-  return exporter.toString();
+  return collisionPlanes;
 }
 
 function buildLeafBSP(leaf) {
+  if (!leaf.solid) throw Error("Leaf is expected to be solid");
   let portals = Array.from(leaf.portals);
   let [mins, maxs] = calculateMinsMaxs(portals.map(e => e.poly));
-  let planes = Array.from(new Set(portals.map(e => e.source))).map(bspNode => bspNode.plane);
+  let nodesEncountered = new Set();
+  let planes = [];
+  for (let portal of portals) {
+    let node = portal.source;
+    if (nodesEncountered.has(node)) continue;
+    nodesEncountered.add(node);
+    // The plane should be pointing away from the solid leaf
+    if (portal.front === leaf) {
+      planes.push(flipPlane(node.plane));
+    } else {
+      planes.push(node.plane);
+    }
+  }
   let leafRoot = buildLeafNodes(planes, mins, maxs);
   buildPortals(leafRoot);
   return leafRoot;

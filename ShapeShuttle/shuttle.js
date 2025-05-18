@@ -378,9 +378,9 @@ async function handleModelFile(file) {
     };
 
     const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
-    let portalBlob = null;
+    let collisionBlob = null;
     try {
-      portalBlob = new Blob([exportBoundingPortals(bspRoot)], { type: "application/octet-stream" });
+      collisionBlob = new Blob([exportCollisionModel(bspRoot)], { type: "application/octet-stream" });
     } catch (e) {
       console.error(e, e.stack);
     }
@@ -391,8 +391,8 @@ async function handleModelFile(file) {
     infoContent.append(buttonBar);
 
     createDownloadAnchor(modelBlob, meshIndex, mesh.name, buttonBar, "Save", rawName, "mdz");
-    if (portalBlob)
-      createDownloadAnchor(portalBlob, meshIndex, mesh.name, buttonBar, "Portals", portalRawName, "obj");
+    if (collisionBlob)
+      createDownloadAnchor(collisionBlob, meshIndex, mesh.name, buttonBar, "Collision", portalRawName, "obj");
 
     if (vertexCount <= 25) {
       let vertices = [];
