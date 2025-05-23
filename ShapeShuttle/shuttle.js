@@ -392,7 +392,7 @@ async function handleModelFile(file) {
 
     createDownloadAnchor(modelBlob, meshIndex, mesh.name, buttonBar, "Save", rawName, "mdz");
     if (collisionBlob)
-      createDownloadAnchor(collisionBlob, meshIndex, mesh.name, buttonBar, "Collision", portalRawName, "obj");
+      createDownloadAnchor(collisionBlob, meshIndex, mesh.name, buttonBar, "Collision", portalRawName, "cmz");
 
     if (vertexCount <= 25) {
       let vertices = [];

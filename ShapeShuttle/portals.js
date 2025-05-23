@@ -627,12 +627,37 @@ function exportCollisionModel(root) {
   const exporter = new WavefrontExporter();
   let collisionPrimitives = root.collectLeaves()
       .filter(e => e.solid)
-      .map(e => generateLeafCollisionPlanes(e, exporter));
-  return exporter.toString();
-  //return JSON.stringify(collisionPrimitives);
+      .map(e => generateLeafCollisionPlanes(e));
+  let numPlanes = collisionPrimitives.reduce((prev, curr) => prev + curr.length, 0);
+  let numPrimitives = collisionPrimitives.length;
+  const buffer = new ArrayBuffer(4 +  // magic
+    4 + // numPrimitives
+    4 + // numPlanes (overall)
+    4 * numPrimitives + // number of planes per primitive
+    4 * 4 * numPlanes // planes (4 floats per plane)
+  );
+  new Uint8Array(buffer).set(Array.from("CMZ0").map(s => s.charCodeAt(0)), 0);
+  let dv = new DataView(buffer);
+  let pos = 4;
+  const writeUint32s = (...values) => {
+    for (let val of values.flatMap(e => Array.isArray(e) ? e : [e])) {
+      dv.setUint32(pos, val, true);
+      pos += 4;
+    }
+  };
+  const writeFloat32s = (...values) => {
+    for (let val of values.flatMap(e => Array.isArray(e) ? e : [e])) {
+      dv.setFloat32(pos, val, true);
+      pos += 4;
+    }
+  };
+  writeUint32s(numPrimitives, numPlanes);
+  writeUint32s(collisionPrimitives.map(e => e.length));
+  writeFloat32s(collisionPrimitives.flatMap(e => e).flatMap(e => e.slice(0, 4)));
+  return buffer;
 }
 
-function generateLeafCollisionPlanes(leaf, debugExporter) {
+function generateLeafCollisionPlanes(leaf, debugExporter=null) {
   // Build a separate BSP from just this leaf
   let leafRoot = buildLeafBSP(leaf);
   const leafPlanes = leafRoot.collectPlanes();
@@ -694,21 +719,20 @@ function generateLeafCollisionPlanes(leaf, debugExporter) {
     // Export a fattened version of the leaf for now to check if it's working
     let fatPlanes = collisionPlanes.map(plane => {
       let newPlane = Array.from(plane);
-      newPlane[3] -= 0.1;
+      newPlane[3] -= 0.3;
       return newPlane;
     });
     console.log("fatPlanes", fatPlanes);
     let center = vscale(vadd(leafRoot.mins, leafRoot.maxs), 0.5);
     // it should be half, but we don't multiply it, so it will grow double
-    let halfNewSize = vsub(leafRoot.maxs, leafRoot.mins);
+    let halfNewSize = vadd(vsub(leafRoot.maxs, leafRoot.mins), Array(3).fill(1));
     let chamferedRoot = buildLeafNodes(fatPlanes, vsub(center, halfNewSize), vadd(center, halfNewSize));
     buildPortals(chamferedRoot);
     const debugPolys = chamferedRoot.collectLeaves()
         .filter(e => e.solid)
         .flatMap(e => Array.from(e.portals))
         .map(e => e.poly);
-    const exporter = debugExporter;
-    exporter.addPolys(debugPolys);
+    debugExporter.addPolys(debugPolys);
     console.log(debugPolys.map(poly => Array.from(poly.plane)));
     console.log(debugPolys.map(poly => poly.verts.map(v => Array.from(v.source))));
   }
