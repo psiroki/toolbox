@@ -630,10 +630,13 @@ function exportCollisionModel(root) {
       .map(e => generateLeafCollisionPlanes(e));
   let numPlanes = collisionPrimitives.reduce((prev, curr) => prev + curr.length, 0);
   let numPrimitives = collisionPrimitives.length;
+  let padding = (3 - numPrimitives) & 3;
   const buffer = new ArrayBuffer(4 +  // magic
     4 + // numPrimitives
     4 + // numPlanes (overall)
-    4 * numPrimitives + // number of planes per primitive
+    4 + // padding
+    4 * (numPrimitives + 1) + // first plane index for each primitive and an extra entry
+    4 * padding +
     4 * 4 * numPlanes // planes (4 floats per plane)
   );
   new Uint8Array(buffer).set(Array.from("CMZ0").map(s => s.charCodeAt(0)), 0);
@@ -651,8 +654,14 @@ function exportCollisionModel(root) {
       pos += 4;
     }
   };
-  writeUint32s(numPrimitives, numPlanes);
-  writeUint32s(collisionPrimitives.map(e => e.length));
+  writeUint32s(numPrimitives, numPlanes, padding);
+  let planeIndex = 0;
+  writeUint32s(planeIndex);
+  for (let prim of collisionPrimitives) {
+    planeIndex += prim.length;
+    writeUint32s(planeIndex);
+  }
+  writeUint32s(Array(padding).fill(0));
   writeFloat32s(collisionPrimitives.flatMap(e => e).flatMap(e => e.slice(0, 4)));
   return buffer;
 }
