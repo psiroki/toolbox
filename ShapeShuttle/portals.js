@@ -101,6 +101,34 @@ function normalOf(a, b, c) {
   return vnormalize(crossProduct(vsub(b, a), vsub(c, a)));
 }
 
+class CollisionPrimitive {
+  center;
+  radius;
+  planes;
+
+  constructor(planes, center, radius) {
+    this.center = center;
+    this.radius = radius;
+    this.planes = planes;
+  }
+
+  /** Returns the flat array length in number of f32x4s */
+  get flatLength() {
+    return this.planes.length + 1;
+  }
+
+  buildFlatArray() {
+    return [...this.center.slice(0, 3), this.radius, ...this.planes.flatMap(e => e.slice(0, 4))];
+  }
+
+  toJson() {
+    return {
+      "boundingSphere": [...this.center.slice(0, 3), this.radius],
+      "planes": this.planes.map(e => e.slice(0, 4)),
+    };
+  }
+}
+
 class WavefrontExporter {
   vertLines = [];
   faceLines = [];
@@ -624,21 +652,23 @@ function buildPortals(root) {
 }
 
 function exportCollisionModel(root) {
-  const exporter = new WavefrontExporter();
-  let collisionPrimitives = root.collectLeaves()
+  let /** Array<CollisionPrimitive> */ collisionPrimitives = root.collectLeaves()
       .filter(e => e.solid)
       .map(e => generateLeafCollisionPlanes(e));
-  let numPlanes = collisionPrimitives.reduce((prev, curr) => prev + curr.length, 0);
+  let numPlanes = collisionPrimitives.reduce((prev, curr) => prev + curr.planes.length, 0);
   let numPrimitives = collisionPrimitives.length;
   let padding = (3 - numPrimitives) & 3;
+  // Allocate a buffer of the correct size
   const buffer = new ArrayBuffer(4 +  // magic
-    4 + // numPrimitives
-    4 + // numPlanes (overall)
-    4 + // padding
+    4 + // size of numPrimitives
+    4 + // size of numPlanes (overall)
+    4 + // size of padding
     4 * (numPrimitives + 1) + // first plane index for each primitive and an extra entry
     4 * padding +
-    4 * 4 * numPlanes // planes (4 floats per plane)
+    4 * 4 * (numPlanes + numPrimitives) // planes (4 floats per plane),
+        // and an extra float quadruplet per primitive for the bounding sphere
   );
+  // Write magic: CMZ0
   new Uint8Array(buffer).set(Array.from("CMZ0").map(s => s.charCodeAt(0)), 0);
   let dv = new DataView(buffer);
   let pos = 4;
@@ -654,15 +684,20 @@ function exportCollisionModel(root) {
       pos += 4;
     }
   };
+  // Write the rest of the header
   writeUint32s(numPrimitives, numPlanes, padding);
+  // First primitive always starts with plane index 0
   let planeIndex = 0;
   writeUint32s(planeIndex);
+  // We mark the end index of each primitive (measured in number of f32x4s)
   for (let prim of collisionPrimitives) {
-    planeIndex += prim.length;
+    planeIndex += prim.flatLength;
     writeUint32s(planeIndex);
   }
+  // Write padding number of zeros
   writeUint32s(Array(padding).fill(0));
-  writeFloat32s(collisionPrimitives.flatMap(e => e).flatMap(e => e.slice(0, 4)));
+  writeFloat32s(collisionPrimitives
+    .flatMap(e => e.buildFlatArray()));
   return buffer;
 }
 
@@ -676,6 +711,19 @@ function generateLeafCollisionPlanes(leaf, debugExporter=null) {
       .filter(e => e.solid)
       .flatMap(e => Array.from(e.portals))
       .flatMap(e => e.poly.verts);
+  let mins = Array.from(effectiveLeafVerts[0]), maxs = Array.from(effectiveLeafVerts[0]);
+  for (let vert of effectiveLeafVerts) {
+    for (let i = 0; i < 3; ++i) {
+      mins[i] = Math.min(mins[i], vert[i]);
+      maxs[i] = Math.max(mins[i], vert[i]);
+    }
+  }
+  let center = vscale(vadd(mins, maxs), 0.5);
+  let rSq = 0;
+  for (let vert of effectiveLeafVerts) {
+    let d = vlenSq(vsub(vert, center));
+    rSq = Math.max(d, rSq);
+  }
   // Collect the vertices (vectors) that are in the incidence of 3 or more planes
   // The key is a string representation of the inciding plane indices
   // (in strictly monotonically increasing order), the value is a VertexIncidence
@@ -745,7 +793,7 @@ function generateLeafCollisionPlanes(leaf, debugExporter=null) {
     console.log(debugPolys.map(poly => Array.from(poly.plane)));
     console.log(debugPolys.map(poly => poly.verts.map(v => Array.from(v.source))));
   }
-  return collisionPlanes;
+  return new CollisionPrimitive(collisionPlanes, center, Math.sqrt(rSq));
 }
 
 function buildLeafBSP(leaf) {

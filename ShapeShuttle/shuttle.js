@@ -368,7 +368,8 @@ async function handleModelFile(file) {
       const crc = crc32hex(new Uint8Array(await blob.arrayBuffer()));
       const saveLink = document.createElement("a");
       const name = meshName;
-      saveLink.textContent = name ? buttonBaseName+" "+name : buttonBaseName;
+      const linkTitle = name ? buttonBaseName+" "+name : buttonBaseName;
+      saveLink.textContent = linkTitle;
       saveLink.href = URL.createObjectURL(blob);
       saveLink.download = rawName+"_"+crc+"."+ext;
       saveLink.classList.add("saveLink");
@@ -393,16 +394,6 @@ async function handleModelFile(file) {
     createDownloadAnchor(modelBlob, meshIndex, mesh.name, buttonBar, "Save", rawName, "mdz");
     if (collisionBlob)
       createDownloadAnchor(collisionBlob, meshIndex, mesh.name, buttonBar, "Collision", portalRawName, "cmz");
-
-    if (vertexCount <= 25) {
-      let vertices = [];
-      for (let i = 0; i < vertexCount; ++i) {
-        vertices.push(Array.from({length: stride>>2})
-            .map((_, j) => niceFloat(vbv.getFloat32(i*stride + (j<<2), true))));
-      }
-      thisFile.vertices = vertices;
-      thisFile.indices = Array.from({length: indexCount}).map((_, i) => ibv.getUint16(i << 1, true));
-    }
   }
 }
 
