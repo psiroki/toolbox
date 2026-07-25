@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelSense - Pixel Perception Calculator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --accent-hover: #0284c7;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --highlight: #f59e0b;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header {
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+
+        input[type="number"]:focus, select:focus {
+            border-color: var(--accent-color);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
+        }
+
+        .input-row > div {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .btn-sm {
+            background: #334155;
+            color: var(--text-main);
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            touch-action: manipulation;
+        }
+
+        .btn-sm:hover, .btn-sm:active {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        .view-toggle-container {
+            display: none;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+            gap: 6px;
+        }
+
+        .view-toggle-btn {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .view-toggle-btn.active {
+            background: var(--accent-color);
+            color: #0f172a;
+            font-weight: 600;
+            border-color: var(--accent-color);
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .stat-box.highlight {
+            border-left-color: var(--highlight);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: var(--text-main);
+            margin: 4px 0;
+        }
+
+        .stat-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .table-container {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            box-sizing: border-box;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px 8px;
+            }
+
+            .card {
+                padding: 12px;
+                margin-bottom: 14px;
+            }
+
+            h1 {
+                font-size: 1.3rem;
+            }
+
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .view-toggle-container {
+                display: flex;
+            }
+
+            /* Mobile Card Mode: Wrap all flex items and stack cleanly */
+            .table-cards table, 
+            .table-cards tbody, 
+            .table-cards tr, 
+            .table-cards td {
+                display: block;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .table-cards thead {
+                display: none;
+            }
+
+            .table-cards tr {
+                margin-bottom: 14px;
+                background: #0f172a;
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                padding: 12px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+
+            .table-cards td {
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                padding: 8px 0;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: space-between;
+                align-items: flex-start;
+                font-size: 0.85rem;
+                gap: 6px;
+            }
+
+            .table-cards td::before {
+                content: attr(data-label);
+                font-weight: 600;
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                flex-shrink: 0;
+                max-width: 100%;
+            }
+
+            .table-cards td > * {
+                max-width: 100%;
+            }
+
+            .table-cards td.td-context {
+                background: rgba(56, 189, 248, 0.1);
+                border-radius: 6px;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                border: 1px solid rgba(56, 189, 248, 0.2);
+                display: block;
+            }
+
+            .table-cards td.td-assessment {
+                border-bottom: none;
+                display: block;
+                margin-top: 6px;
+                padding-top: 10px;
+                border-top: 1px dashed var(--border-color);
+            }
+
+            .table-cards td.td-assessment::before {
+                display: block;
+                margin-bottom: 6px;
+            }
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: normal;
+            word-break: break-word;
+            max-width: 100%;
+            line-height: 1.3;
+        }
+
+        .badge-success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .badge-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+        .badge-info { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+
+        .explanation {
+            background: rgba(56, 189, 248, 0.05);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 0.88rem;
+            color: #cbd5e1;
+            margin-top: 15px;
+            box-sizing: border-box;
+            width: 100%;
+        }
+
+        .explanation h3 {
+            color: var(--accent-color);
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .canvas-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            background: #000;
+            padding: 15px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            background: #000;
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .note {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>PixelSense</h1>
+        <p class="subtitle">Pixel Perception Calculator — Analyze screen density, matrix dithering sizes, font legibility, and visual acuity across distances.</p>
+    </header>
+
+    <div class="grid-layout">
+        <!-- CONTROLS SIDEBAR -->
+        <div class="sidebar">
+            <div class="card">
+                <h2>Display Specs</h2>
+
+                <!-- Screen Presets -->
+                <div class="form-group">
+                    <label>Quick Display Presets</label>
+                    <div class="btn-group">
+                        <button class="btn-sm" onclick="setPreset(2.8, 640, 480)">2.8" 640x480</button>
+                        <button class="btn-sm" onclick="setPreset(3.2, 1024, 768)">3.2" 1024x768</button>
+                        <button class="btn-sm" onclick="setPreset(3.5, 640, 480)">3.5" 640x480</button>
+                        <button class="btn-sm" onclick="setPreset(4.0, 640, 480)">4.0" 640x480</button>
+                        <button class="btn-sm" onclick="setPreset(4.96, 1280, 720)">4.96" 1280x720</button>
+                    </div>
+                </div>
+
+                <!-- Diagonal Size -->
+                <div class="form-group">
+                    <label for="screenSize">Screen Diagonal Size (Inches)</label>
+                    <input type="number" id="screenSize" value="3.2" step="0.01" min="0.1">
+                </div>
+
+                <!-- Resolution -->
+                <div class="form-group">
+                    <label>Resolution (Pixels)</label>
+                    <div class="input-row">
+                        <div>
+                            <input type="number" id="resWidth" value="1024" placeholder="Width">
+                        </div>
+                        <div style="display:flex; align-items:center; justify-content:center; max-width:20px;">×</div>
+                        <div>
+                            <input type="number" id="resHeight" value="768" placeholder="Height">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Dither Matrix & Custom Target</h2>
+                <div class="form-group">
+                    <label for="matrixPreset">Dither Tile / Pattern Multiplier</label>
+                    <select id="matrixPreset" onchange="onMatrixPresetChange()">
+                        <option value="1">1x1 (Single Pixel)</option>
+                        <option value="2">2x2 Tile / Bayer Matrix</option>
+                        <option value="4">4x4 Tile / Bayer Matrix</option>
+                        <option value="8" selected>8x8 Tile / Font Character</option>
+                        <option value="16">16x16 Tile / Small Icon</option>
+                        <option value="custom">Custom Multiplier...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="customMultiplierGroup" style="display:none;">
+                    <label for="customMultiplier">Custom Pixel Multiplier (N x N)</label>
+                    <input type="number" id="customMultiplier" value="8" min="1" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="customDistance">Custom Viewing Distance (cm)</label>
+                    <input type="number" id="customDistance" value="45" min="5" step="1">
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Summary Stats -->
+            <div class="results-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Pixel Density</div>
+                    <div class="stat-value" id="valPPI">228.6 PPI</div>
+                    <div class="stat-desc" id="valDotPitch">Dot Pitch: 0.111 mm</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Single Pixel Size</div>
+                    <div class="stat-value" id="valPxMm">0.111 mm</div>
+                    <div class="stat-desc" id="valPxUm">111.1 µm</div>
+                </div>
+                <div class="stat-box highlight">
+                    <div class="stat-label" id="lblTileSize">8x8 Tile Size</div>
+                    <div class="stat-value" id="valTileMm">0.889 mm</div>
+                    <div class="stat-desc" id="valTileUm">888.9 µm</div>
+                </div>
+            </div>
+
+            <!-- Distance & Human Eye Perception Table -->
+            <div class="card">
+                <h2>
+                    Visual Perception & Contrast-Aware Thresholds
+                </h2>
+
+                <div class="view-toggle-container">
+                    <button class="view-toggle-btn active" id="btnViewCards" onclick="setTableView('cards')">Cards</button>
+                    <button class="view-toggle-btn" id="btnViewTable" onclick="setTableView('scroll')">Scroll Table</button>
+                </div>
+
+                <div class="table-container table-cards" id="tableWrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Context / Distance</th>
+                                <th>1 Px (Stroke) Angle</th>
+                                <th>Tile (<span class="tile-label-span">8x8</span>) Angle</th>
+                                <th>Min Legible Font</th>
+                                <th>Comfort Font</th>
+                                <th>Single Px Resolution</th>
+                                <th>8-Level Dither Perception</th>
+                            </tr>
+                        </thead>
+                        <tbody id="perceptionTable">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="explanation">
+                    <h3>Visual Acuity, Contrast Sensitivity & Font Legibility Rules</h3>
+                    <p>• <strong>Font Height Definition ("Mg" Bounding Box):</strong> Calculated font heights represent total glyph bounding box height in pixels—measured from the lowest point of a descender to the highest point of an ascender or capital letter (e.g. the full vertical span of "Mg").</p>
+                    <p>• <strong>Minimum Legible Font Height:</strong> Requires a total glyph angle of at least <strong>10' arcminutes</strong> (yielding a stroke angle of &approx; 1.25' for standard typography). Text smaller than this in pixel count cannot be reliably recognized without severe strain.</p>
+                    <p>• <strong>Comfortably Readable Font Height:</strong> Requires a total glyph angle of at least <strong>16' arcminutes</strong> (stroke angle &approx; 2.0'), allowing effortless continuous reading without eyestrain.</p>
+                    <p>• <strong>High-Contrast Acuity Threshold (1 Arcminute):</strong> Standard 20/20 visual limit for 100% contrast black/white details. Single pixel strokes under ~1.2' cannot be resolved by the human eye regardless of font size.</p>
+                    <p>• <strong>Low-Contrast Spatial Resolution (8-Level Dither):</strong> In an 8-level dither, adjacent step transitions have low contrast (&Delta;C &approx; 14.3%). Due to the human Contrast Sensitivity Function (CSF), low-contrast features require <strong>2.5&times; to 3&times; larger angular size (&approx; 2.5' &ndash; 3.0' per pixel)</strong> to be recognized. Dither pixels below 2.5' blend into a seamless continuous tone.</p>
+                </div>
+            </div>
+
+            <!-- Dither Shader Simulation Canvas -->
+            <div class="card">
+                <h2>Bayer Dither Shader Preview (8×8, 8-Level Grayscale)</h2>
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:15px;">
+                    Below is a simulated smooth gradient rendered with an 8×8 ordered Bayer dithering matrix mapped across <strong>8 grayscale output levels</strong>.
+                </p>
+                <div class="canvas-container">
+                    <canvas id="ditherCanvas" width="512" height="120"></canvas>
+                    <div class="note">Rendered gradient dithered to 8 discrete gray levels using an 8×8 Bayer Matrix. Zoom level: 1:1 screen pixel mapping on your monitor.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 8x8 Standard Bayer Matrix for dithering simulation
+    const BAYER_8X8 = [
+        [ 0, 32,  8, 40,  2, 34, 10, 42],
+        [48, 16, 56, 24, 50, 18, 58, 26],
+        [12, 44,  4, 36, 14, 46,  6, 38],
+        [60, 28, 52, 20, 62, 30, 54, 22],
+        [ 3, 35, 11, 43,  1, 33,  9, 41],
+        [51, 19, 59, 27, 49, 17, 57, 25],
+        [15, 47,  7, 39, 13, 45,  5, 37],
+        [63, 31, 55, 23, 61, 29, 53, 21]
+    ];
+
+    // Inputs
+    const elScreenSize = document.getElementById('screenSize');
+    const elResWidth = document.getElementById('resWidth');
+    const elResHeight = document.getElementById('resHeight');
+    const elMatrixPreset = document.getElementById('matrixPreset');
+    const elCustomMultiplierGroup = document.getElementById('customMultiplierGroup');
+    const elCustomMultiplier = document.getElementById('customMultiplier');
+    const elCustomDistance = document.getElementById('customDistance');
+
+    // Outputs
+    const elValPPI = document.getElementById('valPPI');
+    const elValDotPitch = document.getElementById('valDotPitch');
+    const elValPxMm = document.getElementById('valPxMm');
+    const elValPxUm = document.getElementById('valPxUm');
+    const elLblTileSize = document.getElementById('lblTileSize');
+    const elValTileMm = document.getElementById('valTileMm');
+    const elValTileUm = document.getElementById('valTileUm');
+    const elPerceptionTable = document.getElementById('perceptionTable');
+    const canvas = document.getElementById('ditherCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Event Listeners
+    [elScreenSize, elResWidth, elResHeight, elCustomMultiplier, elCustomDistance].forEach(input => {
+        input.addEventListener('input', calculate);
+    });
+
+    function onMatrixPresetChange() {
+        if (elMatrixPreset.value === 'custom') {
+            elCustomMultiplierGroup.style.display = 'block';
+        } else {
+            elCustomMultiplierGroup.style.display = 'none';
+        }
+        calculate();
+    }
+
+    function setPreset(diag, w, h) {
+        elScreenSize.value = diag;
+        elResWidth.value = w;
+        elResHeight.value = h;
+        calculate();
+    }
+
+    function getMultiplier() {
+        if (elMatrixPreset.value === 'custom') {
+            return Math.max(1, parseInt(elCustomMultiplier.value) || 1);
+        }
+        return parseInt(elMatrixPreset.value);
+    }
+
+    function calculate() {
+        const diagInches = parseFloat(elScreenSize.value) || 1;
+        const resW = Math.max(1, parseInt(elResWidth.value) || 1);
+        const resH = Math.max(1, parseInt(elResHeight.value) || 1);
+        const mult = getMultiplier();
+        const customDistCm = Math.max(1, parseFloat(elCustomDistance.value) || 45);
+
+        // Calculate Diagonal in Pixels (assuming square pixels)
+        const diagPixels = Math.sqrt(resW * resW + resH * resH);
+
+        // PPI based on diagonal resolution vs diagonal size
+        const ppi = diagPixels / diagInches;
+
+        // Pixel Pitch / Size in mm (square pixels)
+        const pxSizeMm = (diagInches * 25.4) / diagPixels;
+        const pxSizeUm = pxSizeMm * 1000;
+
+        // Tile / Multiplier Size
+        const tileSizeMm = pxSizeMm * mult;
+        const tileSizeUm = tileSizeMm * 1000;
+
+        // Render Stats
+        elValPPI.textContent = `${ppi.toFixed(1)} PPI`;
+        elValDotPitch.textContent = `Dot Pitch: ${pxSizeMm.toFixed(3)} mm`;
+        elValPxMm.textContent = `${pxSizeMm.toFixed(3)} mm`;
+        elValPxUm.textContent = `${pxSizeUm.toFixed(1)} µm`;
+
+        elLblTileSize.textContent = `${mult}x${mult} Tile Size`;
+        elValTileMm.textContent = `${tileSizeMm.toFixed(3)} mm`;
+        elValTileUm.textContent = `${tileSizeUm.toFixed(1)} µm`;
+
+        document.querySelectorAll('.tile-label-span').forEach(el => {
+            el.textContent = `${mult}x${mult}`;
+        });
+
+        // Distances to analyze
+        const distances = [
+            { name: 'Handheld / Smartphone', distCm: 30 },
+            { name: 'Desktop Monitor', distCm: 60 },
+            { name: 'TV / Living Room', distCm: 250 },
+            { name: `Custom Distance (${customDistCm} cm)`, distCm: customDistCm }
+        ];
+
+        // Populate Table
+        elPerceptionTable.innerHTML = '';
+
+        distances.forEach(d => {
+            // Visual angle formula: theta_rad = 2 * atan(size / (2 * distance))
+            // Convert to arcminutes: arcmin = rad * (180 / pi) * 60
+            const distMm = d.distCm * 10;
+            const pxArcMin = 2 * Math.atan(pxSizeMm / (2 * distMm)) * (180 / Math.PI) * 60;
+            const tileArcMin = 2 * Math.atan(tileSizeMm / (2 * distMm)) * (180 / Math.PI) * 60;
+
+            // Required physical font heights in mm based on angular thresholds
+            // Min Legible Font = 10' arcmin total glyph height ("Mg" bounding box)
+            // Comfortably Readable Font = 16' arcmin total glyph height
+            const minFontMm = 2 * distMm * Math.tan((10 / 60 / 2) * (Math.PI / 180));
+            const comfortFontMm = 2 * distMm * Math.tan((16 / 60 / 2) * (Math.PI / 180));
+
+            // Font heights converted to required display pixels (rounded up to whole pixels)
+            const minFontPx = Math.ceil(minFontMm / pxSizeMm);
+            const comfortFontPx = Math.ceil(comfortFontMm / pxSizeMm);
+
+            // Single Pixel Status (High Contrast 100% B/W Acuity Limit)
+            let pxStatusBadge = '';
+            if (pxArcMin <= 1.0) {
+                pxStatusBadge = `<span class="badge badge-success">Retina / Sub-Acuity (${pxArcMin.toFixed(2)}')</span>`;
+            } else if (pxArcMin <= 2.0) {
+                pxStatusBadge = `<span class="badge badge-info">Near Threshold (${pxArcMin.toFixed(2)}')</span>`;
+            } else {
+                pxStatusBadge = `<span class="badge badge-warning">Visible Pixels (${pxArcMin.toFixed(2)}')</span>`;
+            }
+
+            // Contrast-Aware 8-Level Dither Pattern Recognition
+            let tileStatusBadge = '';
+            
+            if (pxArcMin < 1.0) {
+                tileStatusBadge = `<span class="badge badge-success">Seamless Smooth Shading</span><br><small style="color:var(--text-muted)">8-lvl dither pattern invisible (sub-acuity)</small>`;
+            } else if (pxArcMin < 2.5) {
+                tileStatusBadge = `<span class="badge badge-info">Blended Tone</span><br><small style="color:var(--text-muted)">8-lvl dither blends smoothly due to low step contrast</small>`;
+            } else if (pxArcMin < 4.0 || tileArcMin < 16.0) {
+                tileStatusBadge = `<span class="badge badge-warning">Subtle Dither Grain</span><br><small style="color:var(--text-muted)">Low-contrast dither grain visible (${tileSizeMm.toFixed(2)}mm tile)</small>`;
+            } else {
+                tileStatusBadge = `<span class="badge badge-danger">Recognizable Pattern</span><br><small style="color:var(--text-muted)">Dither texture and matrix pattern distinct</small>`;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="td-context" data-label="Context / Distance">
+                    <strong>${d.name}</strong><br><small style="color:var(--text-muted)">${d.distCm} cm / ${(d.distCm / 2.54).toFixed(1)}"</small>
+                </td>
+                <td data-label="1 Px Stroke Angle">${pxArcMin.toFixed(2)}'</td>
+                <td data-label="${mult}x${mult} Tile Angle">${tileArcMin.toFixed(2)}'</td>
+                <td data-label="Min Legible Font"><strong>${minFontPx} px</strong><br><small style="color:var(--text-muted)">${minFontMm.toFixed(2)} mm</small></td>
+                <td data-label="Comfort Font"><strong>${comfortFontPx} px</strong><br><small style="color:var(--text-muted)">${comfortFontMm.toFixed(2)} mm</small></td>
+                <td data-label="1 Px Resolution">${pxStatusBadge}</td>
+                <td class="td-assessment" data-label="8-Level Dither Perception">${tileStatusBadge}</td>
+            `;
+            elPerceptionTable.appendChild(tr);
+        });
+
+        // Draw Canvas Preview
+        drawDitherPreview();
+    }
+
+    function setTableView(mode) {
+        const wrapper = document.getElementById('tableWrapper');
+        const btnCards = document.getElementById('btnViewCards');
+        const btnTable = document.getElementById('btnViewTable');
+
+        if (mode === 'cards') {
+            wrapper.classList.add('table-cards');
+            btnCards.classList.add('active');
+            btnTable.classList.remove('active');
+        } else {
+            wrapper.classList.remove('table-cards');
+            btnTable.classList.add('active');
+            btnCards.classList.remove('active');
+        }
+    }
+
+    function drawDitherPreview() {
+        if (!canvas || !ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        const imgData = ctx.createImageData(w, h);
+        const data = imgData.data;
+
+        const numLevels = 8;
+        const maxLevel = numLevels - 1;
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                // Gradient from 0 to 1 across width
+                const normVal = x / w;
+
+                // Scale continuous value across 8 levels (0..7)
+                const scaled = normVal * maxLevel;
+                const baseLevel = Math.floor(scaled);
+                const frac = scaled - baseLevel;
+
+                // Normalized threshold [0, 1) from 8x8 Bayer Matrix
+                const ditherThresh = (BAYER_8X8[y % 8][x % 8] + 0.5) / 64.0;
+
+                // Multilevel ordered dither thresholding
+                let level = baseLevel;
+                if (frac > ditherThresh && baseLevel < maxLevel) {
+                    level = baseLevel + 1;
+                }
+
+                // Map discrete level (0..7) back to 8-bit intensity (0..255)
+                const grayVal = Math.round((level / maxLevel) * 255);
+
+                const idx = (y * w + x) * 4;
+                data[idx]     = grayVal; // R
+                data[idx + 1] = grayVal; // G
+                data[idx + 2] = grayVal; // B
+                data[idx + 3] = 255;     // Alpha
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Initial run
+    calculate();
+</script>

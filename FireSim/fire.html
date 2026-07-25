@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🔥 Fire Simulation</title>
+<meta name="description" content="Interactive GPU fire simulation — touch to ignite flames">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --ui-h: 120px;
+    --bg: #050508;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  #canvas-wrap {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    bottom: var(--ui-h);
+  }
+
+  #glcanvas {
+    display: block;
+    width: 100%; height: 100%;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  /* ── BOTTOM BAR ── */
+  #bottom-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: var(--ui-h);
+    background: linear-gradient(180deg, #0a0a0f 0%, #060609 100%);
+    border-top: 1px solid #ffffff10;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #bottom-bar::-webkit-scrollbar { display: none; }
+
+  /* Fire preset swatches */
+  .preset {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    margin: 0 7px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  .preset-ring {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    position: relative;
+    transition: transform 0.18s cubic-bezier(.34,1.56,.64,1);
+    border: 2px solid transparent;
+  }
+  .preset.active .preset-ring {
+    transform: scale(1.2);
+    border-color: #fff8;
+    box-shadow: 0 0 16px 4px var(--glow, #ff6600aa);
+  }
+  .preset-ring canvas {
+    border-radius: 50%;
+    width: 100%; height: 100%;
+    display: block;
+  }
+
+  .preset-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
+    color: #ffffff77;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: color 0.2s;
+  }
+  .preset.active .preset-label { color: #ffffffcc; }
+
+  /* Separator */
+  .sep {
+    flex-shrink: 0;
+    width: 1px;
+    height: 60px;
+    background: #ffffff12;
+    margin: 0 6px;
+  }
+
+  /* Intensity knob area */
+  #controls-right {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding-left: 10px;
+  }
+  #controls-right .ctrl-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #ffffff55;
+    text-transform: uppercase;
+  }
+  /* Ember toggle */
+  #ember-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #ffffff0a;
+    border: 1px solid #ffffff18;
+    border-radius: 20px;
+    padding: 5px 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  #ember-btn .track {
+    position: relative;
+    width: 34px; height: 20px;
+    background: #ffffff15;
+    border-radius: 10px;
+    border: 1.5px solid #ffffff25;
+    transition: background 0.2s;
+  }
+  #ember-btn.on .track { background: #ff660055; border-color: #ff6600aa; }
+  #ember-btn .thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px #0006;
+    transition: transform 0.2s cubic-bezier(.34,1.56,.64,1);
+  }
+  #ember-btn.on .thumb { transform: translateX(14px); }
+  #ember-btn .btn-txt {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff77;
+    letter-spacing: 0.05em;
+  }
+
+  /* Hint overlay */
+  #hint {
+    position: absolute;
+    top: 42%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    z-index: 20;
+    transition: opacity 1.2s;
+  }
+  #hint.hidden { opacity: 0; }
+  #hint .h1 {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(22px, 5vw, 42px);
+    font-weight: 900;
+    color: #ff6600cc;
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 30px #ff660088, 0 0 60px #ff220044;
+  }
+  #hint .h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(12px, 2.5vw, 18px);
+    font-weight: 500;
+    color: #ffffff44;
+    letter-spacing: 0.2em;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap">
+  <canvas id="glcanvas"></canvas>
+</div>
+
+<div id="bottom-bar">
+  <!-- preset swatches injected by JS -->
+  <div class="sep"></div>
+  <div id="controls-right">
+    <div id="ember-btn" class="on" title="Ambient embers">
+      <div class="track"><div class="thumb"></div></div>
+      <span class="btn-txt">EMBERS</span>
+    </div>
+  </div>
+</div>
+
+<div id="hint">
+  <div class="h1">IGNITE</div>
+  <div class="h2">Touch or drag to summon fire</div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════
+const SIM_RES          = 256;
+const PRESSURE_ITERS   = 20;
+const VEL_DISSIPATION  = 0.97;
+const TEMP_DISSIPATION = 0.982;   // temperature cools over time
+const BUOYANCY         = 0.28e1;    // hot rises
+const SPLAT_RADIUS     = 0.018;
+const FORCE_SCALE      = 7000;
+const EMBER_RATE       = 0.012;   // chance per frame of auto ember
+
+// Additive weight for temperature splats (tune this to taste; 1.0 = full add)
+const SPLAT_ADD_SCALE  = 0.5;
+
+// ═══════════════════════════════════════════
+//  FIRE COLOR PRESETS
+//  Each preset defines a blackbody-style ramp:
+//  [t=0 → cool/dark, t=1 → peak color]
+//  encoded as 4 control colors the shader interpolates
+// ═══════════════════════════════════════════
+const PRESETS = [
+  {
+    name: 'Campfire',
+    glow: '#ff5500',
+    // classic: black → deep red → orange → yellow → white-yellow
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.55, 0.05, 0.00],
+    c2: [1.00, 0.38, 0.00],
+    c3: [1.00, 0.90, 0.30],
+    c4: [1.00, 1.00, 0.85],
+  },
+  {
+    name: 'Inferno',
+    glow: '#ff1100',
+    // deep crimson → hellish red → fierce orange
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.50, 0.00, 0.00],
+    c2: [1.00, 0.10, 0.00],
+    c3: [1.00, 0.50, 0.02],
+    c4: [1.00, 0.92, 0.40],
+  },
+  {
+    name: 'Spirit',
+    glow: '#4488ff',
+    // ghostly blue flame: black → deep indigo → cobalt → icy white-blue
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.04, 0.02, 0.25],
+    c2: [0.05, 0.20, 0.90],
+    c3: [0.30, 0.70, 1.00],
+    c4: [0.85, 0.95, 1.00],
+  },
+  {
+    name: 'Poison',
+    glow: '#44ff44',
+    // toxic green: black → swamp → venomous green → acid yellow
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.02, 0.18, 0.02],
+    c2: [0.05, 0.65, 0.05],
+    c3: [0.55, 1.00, 0.10],
+    c4: [0.90, 1.00, 0.70],
+  },
+  {
+    name: 'Frost',
+    glow: '#88ddff',
+    // ice fire: near-black navy → arctic blue → cyan → white
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.00, 0.05, 0.20],
+    c2: [0.00, 0.40, 0.80],
+    c3: [0.20, 0.85, 1.00],
+    c4: [0.90, 1.00, 1.00],
+  },
+  {
+    name: 'Violet',
+    glow: '#cc44ff',
+    // arcane purple: black → deep violet → magenta → lavender white
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.18, 0.00, 0.28],
+    c2: [0.65, 0.00, 0.85],
+    c3: [0.95, 0.30, 1.00],
+    c4: [1.00, 0.85, 1.00],
+  },
+  {
+    name: 'Solar',
+    glow: '#ffcc00',
+    // stellar white-gold: black → amber → pale gold → brilliant white
+    c0: [0.00, 0.00, 0.00],
+    c1: [0.35, 0.18, 0.00],
+    c2: [0.90, 0.60, 0.00],
+    c3: [1.00, 0.90, 0.40],
+    c4: [1.00, 1.00, 0.95],
+  },
+];
+
+let activePreset = 0;
+
+// Draw a mini gradient ramp swatch onto a small canvas
+function drawSwatchCanvas(cvs, preset) {
+  const ctx = cvs.getContext('2d');
+  const s = cvs.width;
+  const grd = ctx.createRadialGradient(s*0.38, s*0.35, 0, s*0.5, s*0.5, s*0.5);
+  const cols = [preset.c0, preset.c1, preset.c2, preset.c3, preset.c4];
+  const stops = [0, 0.25, 0.5, 0.75, 1.0];
+  cols.forEach((c, i) => {
+    grd.addColorStop(stops[i],
+      `rgb(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)})`);
+  });
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(s/2, s/2, s/2, 0, Math.PI*2);
+  ctx.fill();
+}
+
+// Build palette UI
+const bar = document.getElementById('bottom-bar');
+const swatches = [];
+PRESETS.forEach((p, i) => {
+  const div = document.createElement('div');
+  div.className = 'preset' + (i === 0 ? ' active' : '');
+  div.style.setProperty('--glow', p.glow + '99');
+
+  const ring = document.createElement('div');
+  ring.className = 'preset-ring';
+
+  const cvs = document.createElement('canvas');
+  cvs.width = 54; cvs.height = 54;
+  drawSwatchCanvas(cvs, p);
+
+  ring.appendChild(cvs);
+  div.appendChild(ring);
+
+  const lbl = document.createElement('div');
+  lbl.className = 'preset-label';
+  lbl.textContent = p.name;
+  div.appendChild(lbl);
+
+  div.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    swatches.forEach(s => s.classList.remove('active'));
+    div.classList.add('active');
+    activePreset = i;
+    updateFirePalette();
+  });
+
+  bar.insertBefore(div, bar.querySelector('.sep'));
+  swatches.push(div);
+});
+
+// Embers toggle
+let embersOn = true;
+const emberBtn = document.getElementById('ember-btn');
+emberBtn.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  embersOn = !embersOn;
+  emberBtn.classList.toggle('on', embersOn);
+});
+
+// ═══════════════════════════════════════════
+//  WEBGL SETUP
+// ═══════════════════════════════════════════
+const canvas = document.getElementById('glcanvas');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); initFBOs(); });
+
+const gl = canvas.getContext('webgl', {
+  alpha: false, antialias: false, preserveDrawingBuffer: false
+});
+
+const extHalf   = gl.getExtension('OES_texture_half_float');
+const extHalfLn = gl.getExtension('OES_texture_half_float_linear');
+const extFloat  = gl.getExtension('OES_texture_float');
+const extBuf    = gl.getExtension('WEBGL_color_buffer_float') ||
+                  gl.getExtension('EXT_color_buffer_half_float');
+
+let FLOAT_TYPE;
+if (extHalf && extBuf) {
+  FLOAT_TYPE = extHalf.HALF_FLOAT_OES;
+} else if (extFloat) {
+  FLOAT_TYPE = gl.FLOAT;
+} else {
+  FLOAT_TYPE = gl.UNSIGNED_BYTE;
+}
+
+// ── Shaders ──────────────────────────────────
+
+const VS = `
+  precision highp float;
+  attribute vec2 a_pos;
+  varying vec2 v_uv;
+  void main() {
+    v_uv = a_pos * 0.5 + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`;
+
+const VS_DISPLAY = `
+  precision highp float;
+  attribute vec2 a_pos;
+  varying vec2 v_uv;
+  uniform vec2 u_coverScale;
+  void main() {
+    v_uv = (a_pos * 0.5) * u_coverScale + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`;
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function makeProgram(fsSrc, vsSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vsSrc || VS));
+  gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  return p;
+}
+function uniform(p, name) { return gl.getUniformLocation(p, name); }
+
+// Advect
+const progAdvect = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_velocity;
+  uniform sampler2D u_source;
+  uniform float u_dt;
+  uniform float u_dissipation;
+  uniform vec2 u_texelSize;
+  void main() {
+    vec2 vel = texture2D(u_velocity, v_uv).xy;
+    vec2 prevUV = v_uv - vel * u_dt * u_texelSize;
+    gl_FragColor = u_dissipation * texture2D(u_source, prevUV);
+  }
+`);
+
+// Buoyancy: hot temperature rises (adds upward Y velocity)
+const progBuoyancy = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_velocity;
+  uniform sampler2D u_temperature;
+  uniform float u_buoyancy;
+  uniform float u_dt;
+  void main() {
+    vec2 vel = texture2D(u_velocity, v_uv).xy;
+    float temp = texture2D(u_temperature, v_uv).r;
+    // Add upward force proportional to temperature
+    vel.y += u_buoyancy * temp * u_dt * 60.0;
+    gl_FragColor = vec4(vel, 0.0, 1.0);
+  }
+`);
+
+// Divergence
+const progDiv = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_velocity;
+  uniform vec2 u_texelSize;
+  void main() {
+    float L = texture2D(u_velocity, v_uv - vec2(u_texelSize.x,0)).x;
+    float R = texture2D(u_velocity, v_uv + vec2(u_texelSize.x,0)).x;
+    float B = texture2D(u_velocity, v_uv - vec2(0,u_texelSize.y)).y;
+    float T = texture2D(u_velocity, v_uv + vec2(0,u_texelSize.y)).y;
+    gl_FragColor = vec4(0.5*(R-L+T-B), 0.0, 0.0, 1.0);
+  }
+`);
+
+// Pressure (Jacobi)
+const progPressure = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_pressure;
+  uniform sampler2D u_divergence;
+  uniform vec2 u_texelSize;
+  void main() {
+    float L = texture2D(u_pressure, v_uv - vec2(u_texelSize.x,0)).x;
+    float R = texture2D(u_pressure, v_uv + vec2(u_texelSize.x,0)).x;
+    float B = texture2D(u_pressure, v_uv - vec2(0,u_texelSize.y)).x;
+    float T = texture2D(u_pressure, v_uv + vec2(0,u_texelSize.y)).x;
+    float d = texture2D(u_divergence, v_uv).x;
+    gl_FragColor = vec4((L+R+B+T - d)*0.25, 0.0, 0.0, 1.0);
+  }
+`);
+
+// Gradient subtract
+const progGradSub = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_pressure;
+  uniform sampler2D u_velocity;
+  uniform vec2 u_texelSize;
+  void main() {
+    float L = texture2D(u_pressure, v_uv - vec2(u_texelSize.x,0)).x;
+    float R = texture2D(u_pressure, v_uv + vec2(u_texelSize.x,0)).x;
+    float B = texture2D(u_pressure, v_uv - vec2(0,u_texelSize.y)).x;
+    float T = texture2D(u_pressure, v_uv + vec2(0,u_texelSize.y)).x;
+    vec2 vel = texture2D(u_velocity, v_uv).xy;
+    vel -= 0.5 * vec2(R-L, T-B);
+    gl_FragColor = vec4(vel, 0.0, 1.0);
+  }
+`);
+
+// Splat (for both velocity and temperature)
+// u_addScale: 0.0 = replace-style (velocity), >0 = additive with that weight (temperature)
+const progSplat = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_target;
+  uniform vec2 u_point;
+  uniform vec3 u_color;
+  uniform float u_radius;
+  uniform float u_addScale;
+  void main() {
+    vec2 d = v_uv - u_point;
+    float f = exp(-dot(d,d) / u_radius);
+    vec4 base = texture2D(u_target, v_uv);
+    if(u_addScale > 0.0) {
+      gl_FragColor = base + vec4(u_color * f * u_addScale, f * u_addScale);
+    } else {
+      gl_FragColor = base + vec4(u_color * f, 0.0);
+    }
+  }
+`);
+
+// Display — maps temperature scalar → fire color ramp (5 control points)
+const progDisplay = makeProgram(`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D u_temperature;
+  // 5-stop blackbody ramp
+  uniform vec3 u_c0, u_c1, u_c2, u_c3, u_c4;
+
+  vec3 fireColor(float t) {
+    t = clamp(t, 0.0, 1.0);
+    // piecewise between 5 stops at 0, 0.25, 0.5, 0.75, 1.0
+    vec3 col;
+    if(t < 0.25) {
+      col = mix(u_c0, u_c1, t * 4.0);
+    } else if(t < 0.5) {
+      col = mix(u_c1, u_c2, (t - 0.25) * 4.0);
+    } else if(t < 0.75) {
+      col = mix(u_c2, u_c3, (t - 0.5) * 4.0);
+    } else {
+      col = mix(u_c3, u_c4, (t - 0.75) * 4.0);
+    }
+    return col;
+  }
+
+  void main() {
+    float temp = texture2D(u_temperature, v_uv).r;
+    // Slightly nonlinear to exaggerate hot core
+    float t = pow(clamp(temp, 0.0, 1.0), 0.72);
+    vec3 col = fireColor(t);
+    // Deep dark background through the cool edges
+    float bg = 1.0 - smoothstep(0.0, 0.08, temp);
+    col += vec3(0.005, 0.003, 0.008) * bg;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`, VS_DISPLAY);
+
+// ── Geometry ─────────────────────────────────
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER,
+  new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function useProgram(p) {
+  gl.useProgram(p);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  const loc = gl.getAttribLocation(p, 'a_pos');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+function drawQuad() { gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+
+// ── FBO helpers ───────────────────────────────
+function makeTex(w, h, type) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, type, null);
+  return tex;
+}
+function makeFBO(w, h, type) {
+  const tex = makeTex(w, h, type);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, tex, w, h };
+}
+function makeDoubleFBO(w, h, type) {
+  let a = makeFBO(w, h, type), b = makeFBO(w, h, type);
+  return {
+    get read() { return a; },
+    get write() { return b; },
+    swap() { [a,b] = [b,a]; }
+  };
+}
+function bindFBO(fbo) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo ? fbo.fbo : null);
+  gl.viewport(0, 0, fbo ? fbo.w : canvas.width, fbo ? fbo.h : canvas.height);
+}
+function bindTex(unit, tex) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+}
+
+let velocity, pressure, divergence, temperature;
+function initFBOs() {
+  const N = SIM_RES, T = FLOAT_TYPE;
+  velocity    = makeDoubleFBO(N, N, T);
+  pressure    = makeDoubleFBO(N, N, T);
+  divergence  = makeFBO(N, N, T);
+  temperature = makeDoubleFBO(N, N, T);
+}
+initFBOs();
+
+// ── Cover scale ───────────────────────────────
+function getCoverScale() {
+  const r = canvas.width / canvas.height;
+  return r > 1 ? [1.0, 1.0/r] : [r, 1.0];
+}
+function canvasToSimUV(px, py) {
+  const [sx, sy] = getCoverScale();
+  const ndcX = (px / canvas.width)  * 2.0 - 1.0;
+  const ndcY = (py / canvas.height) * 2.0 - 1.0;
+  return [ndcX * 0.5 * sx + 0.5, -ndcY * 0.5 * sy + 0.5];
+}
+
+// ── Fire palette upload ────────────────────────
+function updateFirePalette() {
+  const p = PRESETS[activePreset];
+  useProgram(progDisplay);
+  gl.uniform3fv(uniform(progDisplay, 'u_c0'), p.c0);
+  gl.uniform3fv(uniform(progDisplay, 'u_c1'), p.c1);
+  gl.uniform3fv(uniform(progDisplay, 'u_c2'), p.c2);
+  gl.uniform3fv(uniform(progDisplay, 'u_c3'), p.c3);
+  gl.uniform3fv(uniform(progDisplay, 'u_c4'), p.c4);
+}
+updateFirePalette();
+
+// ── Simulation step ───────────────────────────
+let lastTime = performance.now();
+
+function simulate() {
+  const now = performance.now();
+  const dt  = Math.min((now - lastTime) / 1000, 0.033);
+  lastTime  = now;
+
+  const N     = SIM_RES;
+  const texel = [1/N, 1/N];
+
+  // Inject heat at every active pointer position each frame (not just on move)
+  for (const id in pointers) {
+    const p = pointers[id];
+    const [uvx, uvy] = canvasToSimUV(p.x, p.y);
+    const [sx, sy]   = getCoverScale();
+    splatPoint(uvx, uvy, 0, 0, 1.0);
+  }
+
+  // 1. Advect velocity
+  useProgram(progAdvect);
+  gl.uniform2fv(uniform(progAdvect,'u_texelSize'), texel);
+  gl.uniform1f(uniform(progAdvect,'u_dt'), dt);
+  gl.uniform1f(uniform(progAdvect,'u_dissipation'), VEL_DISSIPATION);
+  bindTex(0, velocity.read.tex); gl.uniform1i(uniform(progAdvect,'u_velocity'), 0);
+  bindTex(1, velocity.read.tex); gl.uniform1i(uniform(progAdvect,'u_source'), 1);
+  bindFBO(velocity.write); drawQuad(); velocity.swap();
+
+  // 2. Buoyancy (hot gas rises)
+  useProgram(progBuoyancy);
+  bindTex(0, velocity.read.tex);    gl.uniform1i(uniform(progBuoyancy,'u_velocity'), 0);
+  bindTex(1, temperature.read.tex); gl.uniform1i(uniform(progBuoyancy,'u_temperature'), 1);
+  gl.uniform1f(uniform(progBuoyancy,'u_buoyancy'), BUOYANCY);
+  gl.uniform1f(uniform(progBuoyancy,'u_dt'), dt);
+  bindFBO(velocity.write); drawQuad(); velocity.swap();
+
+  // 3. Divergence
+  useProgram(progDiv);
+  gl.uniform2fv(uniform(progDiv,'u_texelSize'), texel);
+  bindTex(0, velocity.read.tex); gl.uniform1i(uniform(progDiv,'u_velocity'), 0);
+  bindFBO(divergence); drawQuad();
+
+  // 4. Pressure solve
+  useProgram(progPressure);
+  gl.uniform2fv(uniform(progPressure,'u_texelSize'), texel);
+  bindTex(1, divergence.tex); gl.uniform1i(uniform(progPressure,'u_divergence'), 1);
+  for (let i = 0; i < PRESSURE_ITERS; i++) {
+    bindTex(0, pressure.read.tex); gl.uniform1i(uniform(progPressure,'u_pressure'), 0);
+    bindFBO(pressure.write); drawQuad(); pressure.swap();
+  }
+
+  // 5. Gradient subtract
+  useProgram(progGradSub);
+  gl.uniform2fv(uniform(progGradSub,'u_texelSize'), texel);
+  bindTex(0, pressure.read.tex); gl.uniform1i(uniform(progGradSub,'u_pressure'), 0);
+  bindTex(1, velocity.read.tex); gl.uniform1i(uniform(progGradSub,'u_velocity'), 1);
+  bindFBO(velocity.write); drawQuad(); velocity.swap();
+
+  // 6. Advect temperature (with cooling dissipation)
+  useProgram(progAdvect);
+  gl.uniform2fv(uniform(progAdvect,'u_texelSize'), texel);
+  gl.uniform1f(uniform(progAdvect,'u_dt'), dt);
+  gl.uniform1f(uniform(progAdvect,'u_dissipation'), TEMP_DISSIPATION);
+  bindTex(0, velocity.read.tex);    gl.uniform1i(uniform(progAdvect,'u_velocity'), 0);
+  bindTex(1, temperature.read.tex); gl.uniform1i(uniform(progAdvect,'u_source'), 1);
+  bindFBO(temperature.write); drawQuad(); temperature.swap();
+
+  // 7. Ambient embers: random sparks along the bottom
+  if (embersOn && Math.random() < EMBER_RATE) {
+    const ex = 0.2 + Math.random() * 0.6;
+    const ey = 0.05 + Math.random() * 0.08;
+    splatPoint(ex, ey, (Math.random()-0.5)*0.03, 0.05, 0.5 + Math.random()*0.5);
+  }
+
+  // 8. Render
+  bindFBO(null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  useProgram(progDisplay);
+  updateFirePalette();
+  bindTex(0, temperature.read.tex);
+  gl.uniform1i(uniform(progDisplay,'u_temperature'), 0);
+  gl.uniform2fv(uniform(progDisplay,'u_coverScale'), getCoverScale());
+  drawQuad();
+}
+
+// ── Splat helpers ─────────────────────────────
+function splatPoint(uvx, uvy, fdx, fdy, heat) {
+  const N = SIM_RES;
+  const r = SPLAT_RADIUS * SPLAT_RADIUS;
+
+  useProgram(progSplat);
+  // velocity splat
+  bindTex(0, velocity.read.tex); gl.uniform1i(uniform(progSplat,'u_target'), 0);
+  gl.uniform2f(uniform(progSplat,'u_point'), uvx, uvy);
+  gl.uniform3f(uniform(progSplat,'u_color'), fdx * FORCE_SCALE, fdy * FORCE_SCALE, 0);
+  gl.uniform1f(uniform(progSplat,'u_radius'), r);
+  gl.uniform1f(uniform(progSplat,'u_addScale'), 0.0);
+  bindFBO(velocity.write); gl.viewport(0,0,N,N); drawQuad(); velocity.swap();
+
+  // temperature splat
+  bindTex(0, temperature.read.tex); gl.uniform1i(uniform(progSplat,'u_target'), 0);
+  gl.uniform3f(uniform(progSplat,'u_color'), heat * 0.18, 0, 0);
+  gl.uniform1f(uniform(progSplat,'u_radius'), r * 1.8);
+  gl.uniform1f(uniform(progSplat,'u_addScale'), SPLAT_ADD_SCALE);
+  bindFBO(temperature.write); drawQuad(); temperature.swap();
+}
+
+function splat(canvasX, canvasY, dx, dy) {
+  const [uvx, uvy] = canvasToSimUV(canvasX, canvasY);
+  const [sx, sy]   = getCoverScale();
+  splatPoint(uvx, uvy, dx * sx, -dy * sy, 1.0);
+}
+
+// ── Pointer tracking ─────────────────────────
+const pointers = {};
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.target !== canvas) return;
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  document.getElementById('hint').classList.add('hidden');
+  const rect = canvas.getBoundingClientRect();
+  pointers[e.pointerId] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  // on tap, add a heat burst even without drag
+  const rect2 = canvas.getBoundingClientRect();
+  splat(e.clientX - rect2.left, e.clientY - rect2.top, 0, -0.01);
+}, { passive: false });
+
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers[e.pointerId];
+  if (!p) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const nx = e.clientX - rect.left;
+  const ny = e.clientY - rect.top;
+  const dx = (nx - p.x) / canvas.width;
+  const dy = (ny - p.y) / canvas.height;
+  splat(nx, ny, dx, dy);
+  p.x = nx; p.y = ny;
+}, { passive: false });
+
+canvas.addEventListener('pointerup',     (e) => { delete pointers[e.pointerId]; });
+canvas.addEventListener('pointercancel', (e) => { delete pointers[e.pointerId]; });
+canvas.addEventListener('contextmenu',   (e) => e.preventDefault());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) for (const id in pointers) delete pointers[id];
+});
+
+// ── Fullscreen on mobile touch ─────────────────
+(function() {
+  if (window.self !== window.top) return;
+  if (!navigator.maxTouchPoints) return;
+  window.addEventListener('touchstart', () => {
+    const el = document.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+  }, { once: true });
+})();
+
+// ── Seed a small starter flame ────────────────
+function seedFlame() {
+  for (let i = 0; i < 8; i++) {
+    const x = 0.35 + Math.random() * 0.30;
+    const y = 0.08 + Math.random() * 0.10;
+    splatPoint(x, y, (Math.random()-0.5)*0.005, 0.02, 0.8 + Math.random()*0.2);
+  }
+}
+setTimeout(seedFlame, 60);
+
+// ── Loop ──────────────────────────────────────
+function loop() {
+  simulate();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
