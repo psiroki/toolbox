@@ -355,7 +355,14 @@ async function handleModelFile(file) {
       vbPos += stride;
     }
 
-    const bspRoot = buildBSP(rawVertex, rawIndex);
+    const bspRoot = (() => {
+      try {
+        return buildBSP(rawVertex, rawIndex);
+      } catch (e) {
+        console.error(e, e.stack);
+        return null;
+      }
+    })();
     console.log(bspRoot);
 
     const headerBuffer = new ArrayBuffer(3 * 4);
@@ -381,7 +388,7 @@ async function handleModelFile(file) {
     const modelBlob = new Blob([headerBuffer, vertexBuffer, indexBuffer], { type: "application/octet-stream" });
     let collisionBlob = null;
     try {
-      collisionBlob = new Blob([exportCollisionModel(bspRoot)], { type: "application/octet-stream" });
+      collisionBlob = bspRoot && new Blob([exportCollisionModel(bspRoot)], { type: "application/octet-stream" });
     } catch (e) {
       console.error(e, e.stack);
     }
