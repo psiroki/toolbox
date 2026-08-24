@@ -729,8 +729,18 @@
         }
     }
 
+    let canvasSizedToPixels = false;
     function drawDitherPreview() {
         if (!canvas || !ctx) return;
+        if (!canvasSizedToPixels) {
+            const pw = canvas.width;
+            const ph = canvas.height;
+            canvas.width *= window.devicePixelRatio;
+            canvas.height *= window.devicePixelRatio;
+            canvas.style.width = pw+"px";
+            canvas.style.height = ph+"px";
+            canvasSizedToPixels = true;
+        }
         const w = canvas.width;
         const h = canvas.height;
         const imgData = ctx.createImageData(w, h);
